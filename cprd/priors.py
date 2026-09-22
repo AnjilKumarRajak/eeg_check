@@ -1,11 +1,4 @@
-"""Frozen reference language models p0.
 
-dI_t = log p_phi(w_t|e,C) - log p0(w_t|C) <= -log p0(w_t|C) identically, so the prior's
-surprisal is a hard ceiling on every number the project reports. A weak prior does not
-add noise -- it manufactures headroom the tilt can claim without reading the EEG.
-
-Every prior here is frozen, causal, and must pass `sanity_report()` before use.
-"""
 from __future__ import annotations
 
 import math
@@ -56,11 +49,6 @@ class PriorSanity:
 
 
 class ReferenceLM(nn.Module):
-    """Interface every prior must satisfy.
-
-    log_probs(token_ids) -> (B, T, V) with row t = log p0(. | w_<t), strictly causal.
-    """
-
     vocab_size: int
     d_model: int
 
@@ -131,21 +119,6 @@ class ReferenceLM(nn.Module):
 
 
 class BartEmptySourcePrior(ReferenceLM):
-    """facebook/bart-large scored as a causal LM with a CONTENTLESS encoder source.
-
-    The encoder receives only `<s></s>`. It therefore carries no information about the
-    target, so nothing can leak, while remaining in-distribution for BART's denoising
-    pretraining (which trains on heavily corrupted sources).
-
-    Feeding the target sentence to the encoder instead would be genuine leakage: BART's
-    encoder is bidirectional, so the decoder would cross-attend to a representation
-    containing w_>=t and p0(w_t|w_<t) would collapse toward 1.
-
-    Keeps the HDF5's BART token ids and Omega untouched, so vocabulary comparability
-    with Wang & Ji and SEE is exact. Measured on ZuCo test: 8.23 nats/token (ppl 3743)
-    -- usable, but weak, because BART is a denoising seq2seq model, not an LM.
-    """
-
     def __init__(self, model_name: str = "facebook/bart-large"):
         super().__init__()
         from transformers import BartForConditionalGeneration, BartTokenizerFast
@@ -182,12 +155,6 @@ class BartEmptySourcePrior(ReferenceLM):
 
 
 class CausalLMPrior(ReferenceLM):
-    """A genuinely left-to-right LM (GPT-2 family or any AutoModelForCausalLM).
-
-    Preferred default: a real LM has far lower surprisal than BART, which removes the
-    artificial headroom that would otherwise let the tilt earn dI without reading EEG.
-    Requires re-tokenisation of the corpus (see data.py), since the HDF5 stores BART ids.
-    """
 
     def __init__(self, model_name: str = "gpt2-large"):
         super().__init__()
