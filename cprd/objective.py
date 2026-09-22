@@ -1,23 +1,4 @@
-"""Information gain with an EXACT partition function.
 
-    p_phi(v|e,C) = p0(v|C) exp(gamma ell(v)) / Z        Z = sum_{v in V} p0(v|C) e^{gamma ell(v)}
-    dI_t         = log p_phi(w_t|e,C) - log p0(w_t|C) = gamma_t ell_t(w_t) - log Z_t
-
-Why Z is exact rather than top-K
---------------------------------
-Truncating Z to a top-K support UNDER-estimates log Z, therefore OVER-estimates dI, so
-dI stops being a lower bound on anything. It also destroys the zero point: at gamma = 0
-a truncated estimator returns
-
-    dI_t = -log( sum_{v in S} p0(v) )  >  0
-
-rather than 0, so null-invariance -- the property the whole method rests on -- is simply
-false in the code. On ZuCo with K=256 that floor is about +0.70 nats/token, which is the
-same order as any plausible real effect.
-
-Computing Z exactly costs one matvec Omega @ (B u_t), the same cost as the LM head that
-already produced log p0. There is no reason to approximate it.
-"""
 from __future__ import annotations
 
 from typing import Optional
@@ -32,11 +13,6 @@ def information_gain(
     bu: torch.Tensor,            # (B, d)  = B u_t, the evidence direction in LM space
     gamma: torch.Tensor,         # (B,)    >= 0, already gated by missingness
 ) -> dict:
-    """One timestep of dI, batched. Returns dI plus diagnostics.
-
-    Shapes are checked rather than assumed: a silent broadcast here would corrupt every
-    downstream number.
-    """
     if log_p0.dim() != 2:
         raise ValueError(f"log_p0 must be (B,V), got {tuple(log_p0.shape)}")
     B, V = log_p0.shape
@@ -74,12 +50,6 @@ def sentence_information_gain(
     valid: torch.Tensor,         # (B, T) bool, True = real token (not padding)
     extra_ell: torch.Tensor | None = None,   # (B, T, V) additional tilt logits (free table)
 ) -> dict:
-    """Vectorised over the whole sentence. No python loop over T.
-
-    `valid` excludes padding only. Missing-EEG positions stay in the average with
-    dI == 0, because gamma is already gated to 0 there -- they are genuine zero-evidence
-    observations, not absent data.
-    """
     B, T, V = log_p0.shape
     d = omega.shape[1]
 
@@ -108,11 +78,6 @@ def sentence_information_gain(
 
 def assert_upper_bound(per_token: torch.Tensor, log_p0_gold: torch.Tensor,
                        valid: torch.Tensor, tol: float = 1e-4) -> None:
-    """dI_t <= -log p0(w_t) is an identity, since Z >= p0(w_t) e^{gamma ell(w_t)}.
-
-    A violation means a shape/index bug or a truncated Z, not an interesting result.
-    This is the tripwire that would have caught an impossible 730 nats/token instantly.
-    """
     ceiling = -log_p0_gold
     bad = valid & (per_token > ceiling + tol)
     if bool(bad.any()):
