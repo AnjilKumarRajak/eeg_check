@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""Render REPORT.md from gate artifacts + the ledger. Nothing else.
 
-The report is the only thing a reader should quote from. It refuses to print a number
-that has no ledger record, labels every number with its gate status and training
-objective, and states outright which pre-registered hypotheses passed.
-
-    python experiments/report.py --runs-dir runs [--out runs/REPORT.md]
-"""
 from __future__ import annotations
 
 import argparse
@@ -159,8 +151,6 @@ def main():
             continue
         det = gg.get("detail", {}) or {}
         ci = None
-        # the gate carries the CI of the CURRENT measurement; the ledger is append-only,
-        # so fall back to its LAST matching record (never the first, which may be stale)
         if det.get("ci95_bits_per_token_derangement") and None not in det["ci95_bits_per_token_derangement"]:
             ci = tuple(float(x) for x in det["ci95_bits_per_token_derangement"])
         else:
