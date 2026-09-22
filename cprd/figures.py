@@ -1,20 +1,4 @@
-"""ICLR-oriented figures, rendered straight from gate artifacts + the ledger.
 
-Every figure is regenerable from provenance-carrying files only — no hand-fed numbers.
-Saved as both PDF (camera-ready) and PNG (draft) into <runs>/figures/.
-
-  fig1_selection_vs_N      accuracy vs N (log2 x): real/gamma0/zeroed/derangement arms,
-                           chance curve, and the theoretical ideal-observer curve from
-                           the measured bits — the paper's money figure
-  fig2_dissociation        same-system bars: generation BLEU real-vs-noise beside
-                           selection accuracy real-vs-zeroed (argument #1)
-  fig3_risk_coverage       selective risk vs coverage, real arm vs cheap-confidence
-  fig4_matched_n           predicted vs realized bits (non-additivity finding)
-  fig5_itr_axis            our ITR point on the classical BCI axis (MI/P300/SSVEP bands)
-  fig6_estimator           recovered vs injected bits with y=x and the validated range
-  fig7_scaling             realized bits / accuracy vs training fraction (if e8 ran)
-  fig8_metric_collapse     paper metrics real-vs-zeroed bars (BLEU/BERTScore/METEOR/...)
-"""
 from __future__ import annotations
 
 import json
