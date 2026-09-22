@@ -1,17 +1,4 @@
-"""VERBATIM port of the base paper's model architecture.
 
-Source: Wang & Ji, "Open Vocabulary Electroencephalography-to-Text Decoding and
-Zero-Shot Sentiment Classification" (AAAI 2022), official repository
-`model_decoding.py` (class BrainTranslator). Copied unchanged except for the
-removal of unused imports/commented-out debug lines and one generation-time
-compatibility note (see WangJiOfficial in experiments/e6_seq2seq_baseline.py —
-their generate() forwards `labels` into HuggingFace generate(), which newer
-transformers versions reject; the adapter calls pretrained.generate() without
-that kwarg, which is computationally identical).
-
-This module exists so the 1:1 baseline row uses THEIR model code, with only the
-data pipeline (our leakage-free preprocessing) swapped underneath it.
-"""
 from __future__ import annotations
 
 import torch
@@ -66,10 +53,7 @@ class BrainTranslator(nn.Module):
 
 
 def apply_step1_freeze(model: nn.Module) -> list[str]:
-    """Their step-1 freeze rule, verbatim (train_decoding.py): freeze every pretrained
-    BART parameter EXCEPT shared embeddings, positional embeddings, and encoder layer 0.
-    Matches both `pretrained.*` (their class) and `backbone.*` (our reimplementation)
-    naming. Returns the names left trainable, for the sanity print."""
+
     trainable = []
     for name, param in model.named_parameters():
         if param.requires_grad and ("pretrained" in name or "backbone" in name):
