@@ -1,20 +1,4 @@
-#!/usr/bin/env python3
-"""
-Download ZuCo 1.0 + 2.0 Matlab files into the layout Wang & Ji (AAAI-22) expect.
 
-Layout produced (matches util/construct_dataset_mat_to_pickle_v{1,2}.py):
-
-    <DEST>/ZuCo/task1-SR/Matlab_files/       <- ZuCo 1.0  "task1- SR"    (11.0 GB)
-    <DEST>/ZuCo/task2-NR/Matlab_files/       <- ZuCo 1.0  "task2 - NR"   (10.4 GB)
-    <DEST>/ZuCo/task3-TSR/Matlab_files/      <- ZuCo 1.0  "task3 - TSR"  ( 8.4 GB)
-    <DEST>/ZuCo/task2-NR-2.0/Matlab_files/   <- ZuCo 2.0  "task1 - NR"   (34.6 GB)
-
-NOTE: in ZuCo 2.0 the *normal reading* task is "task1 - NR", NOT task2.
-ZuCo 2.0's "task2 - TSR" (32.8 GB) is not used by Wang & Ji and is skipped.
-
-Resumable: partial files are kept as <name>.part and continued with HTTP Range.
-Re-running skips files already present at the expected size.
-"""
 import argparse
 import concurrent.futures as cf
 import json
@@ -25,11 +9,6 @@ import urllib.error
 import urllib.request
 
 OSF_NODES = {"v1": "q3zws", "v2": "2urht"}
-
-# (osf node, substring matched against the OSF top-level folder name) -> local task dir
-# Ordered by importance: the first three are Wang & Ji's best configuration
-# (SR v1.0 + NR v1.0 + NR v2.0 = the 10,710-sample / 40.1 BLEU-1 row).
-# TSR is last: their Table 3 shows it does not help, so it is optional.
 WANTED = [
     ("v1", "task1", "SR",  "task1-SR"),
     ("v1", "task2", "NR",  "task2-NR"),
@@ -54,12 +33,6 @@ def api_get(url, retries=5, page_size=None):
 
 
 def walk_files(url, depth=0, maxdepth=3):
-    """Yield (materialized_path, size, download_url) for .mat files under a 'Matlab files' folder.
-
-    Only descends into folders that can lead to Matlab files. ZuCo's sibling
-    folders ('Raw data', 'Preprocessed', ...) hold thousands of large files and
-    paginate 10-at-a-time, so walking them costs minutes and yields nothing.
-    """
     while url:
         d = api_get(url, page_size=100)
         for it in d.get("data", []):
