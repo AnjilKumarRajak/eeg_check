@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""E7: leave-one-subject-out generalization (uses the real subject ids in the build).
 
-Folds are disjoint on BOTH axes by construction: texts (train texts never appear in
-val — guaranteed by the text-clustered split) AND subjects (the held-out subject's
-readings are removed from training). Selection is evaluated on the held-out subject's
-VAL-split readings only — the test split is never touched here.
-
-Reportable either way: graceful degradation across subjects, or an honest failure
-("within-subject calibration required", the norm for working BCIs).
-"""
 from __future__ import annotations
 
 import json
