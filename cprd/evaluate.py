@@ -1,17 +1,4 @@
-"""Estimation of dI_hat, with nulls, permutation p-values and clustered bootstrap.
 
-Two statistical rules that materially change the numbers:
-
-* Clustering. The ZuCo test split has 931 sentences but only **79 unique texts** (each
-  read by up to 24 subjects). Treating sentences as independent overstates significance
-  by roughly sqrt(12). Every resample here draws whole TEXT clusters.
-* p-value correction. A permutation p-value is (1 + #{null >= real}) / (1 + n). Without
-  the +1 it can return exactly 0.0, which is not a possible p-value.
-
-dI is also reported stratified by EEG availability. 43.5% of tokens are unfixated and
-carry gamma == 0 by construction, so a pooled mean dilutes any real effect by that
-fraction.
-"""
 from __future__ import annotations
 
 import os
@@ -69,23 +56,10 @@ class DIResult:
                      + (f"   DV = {self.dI_hat_dv[k]:+.4f}" if self.dI_hat_dv else "")
                      + (f"   InfoNCE = {self.dI_hat_nce[k]:+.4f}" if self.dI_hat_nce else ""))
         return "\n".join(L)
-
-
-# Cross-sentence nulls must be drawn at the DATASET level. 2026-08-18 fix: they were applied
-# per batch (B=8) inside length buckets of +-2 tokens, leaving each recipient 0-2 possible
-# donors -- so the "n_perm permutations" were nearly the same pairing every draw, the null
-# distribution was degenerate and p-values collapsed to ~0 or ~1 (bimodal calibration
-# failure at b=0). With ~1800 sentences per split, dataset-level buckets hold hundreds of
-# donors and the permutation distribution is genuinely random. Within-sentence nulls
-# (temporal_roll, gaussian, zeroed, ...) are unaffected and stay per batch.
 GLOBAL_NULLS = ("sentence_derangement", "text_cluster_derangement")
 
 
 def _global_null_windows(batches, null: str, seed: int):
-    """Return per-batch (window, win_observed) tensors for a dataset-level cross-sentence
-    null. Every OBSERVED recipient token gets a real donor row (donor observed rows,
-    wrapped); recipient missingness is left untouched (gamma gate + averaging mask key on
-    the recipient's `observed`, so real and null see identical masks)."""
     rng = np.random.default_rng(seed)
     loc, lengths, texts = [], [], []
     for bi, b in enumerate(batches):
@@ -94,14 +68,6 @@ def _global_null_windows(batches, null: str, seed: int):
             loc.append((bi, i)); lengths.append(int(v[i].sum()))
             texts.append(b["text"][i] if "text" in b else "")
     lengths = np.asarray(lengths)
-    # exact-length buckets (bucket=0): with position-preserving assignment this keeps the
-    # sentence-edge (padding) structure identical between real and null; a singleton
-    # length falls back to the neighbouring length inside length_stratified_derangement.
-    # 2026-09 fix: BOTH dataset-level cross-sentence nulls reject same-text donors. With
-    # exact-length buckets most donors of a ZuCo sentence are other subjects' readings of
-    # the SAME text, which keep the text-EEG correspondence inside the "null" and bias
-    # dI_hat toward 0 (and p toward 1). Texts that are all-distinct (synthetic) are
-    # unaffected.
     if any(texts):
         donor = text_cluster_derangement(texts, lengths, rng, bucket=0)
     else:
@@ -116,12 +82,6 @@ def _global_null_windows(batches, null: str, seed: int):
             Wd, Od, Vd = batches[bd]["window"], batches[bd]["win_observed"], batches[bd]["valid"]
             rows = _observed_row_index(Od, Vd, idd)
             Li = int(lengths[g])
-            # POSITION-PRESERVING assignment (2026-08-19): recipient position t takes the
-            # donor's observed row NEAREST to position t (t itself when observed). With a
-            # +-1-word window the encoder sees sentence-edge padding, and the prior's
-            # entropy depends on position (t=0 has no context); real data has these two
-            # aligned, a wrapped/rolled null does not -> ~1e-5 nat offset that is invisible
-            # against real signal (~0.4 nat) but breaks p-value calibration at b=0.
             pos = torch.arange(Li, device=rows.device)
             j = torch.searchsorted(rows, pos).clamp(max=rows.numel() - 1)
             jm = (j - 1).clamp(min=0)
@@ -220,14 +180,7 @@ def _clustered_bootstrap(values: np.ndarray, clusters: np.ndarray,
                          n_boot: int = 2000, seed: int = 0,
                          checkpoint_path: str | None = None,
                          checkpoint_every: int = 500) -> tuple:
-    """Percentile CI resampling whole clusters (unique sentence texts).
 
-    Resumable: `checkpoint_path`, if given, is a .npy file holding completed resample
-    means so far. A crash mid-run loses at most `checkpoint_every` resamples, not the
-    whole pass -- this loop is cheap per-resample but n_boot=10000 x re-derived indices
-    still adds up, and it runs right after the (much more expensive) permutation nulls,
-    so losing it to an unrelated crash after everything else finished is the worst case.
-    """
     if len(values) == 0:
         return (float("nan"), float("nan"))
     rng = np.random.default_rng(seed)
@@ -240,9 +193,6 @@ def _clustered_bootstrap(values: np.ndarray, clusters: np.ndarray,
         done = np.flatnonzero(~np.isnan(cached))
         start = int(done[-1]) + 1 if len(done) else 0
         means[:start] = cached[:start]
-        # replay the RNG draws already consumed so the resumed sequence is a continuation,
-        # not a repeat -- reproducibility of the exact resample set isn't the point here
-        # (it's already a random resample), only that we don't recompute what's done
         for _ in range(start):
             rng.choice(uniq, size=len(uniq), replace=True)
     for b in range(start, n_boot):
@@ -260,15 +210,6 @@ def evaluate(model, batches, log_p0s=None, nulls=("sentence_derangement", "tempo
              meta: Optional[dict] = None, progress: bool = False,
              checkpoint_dir: Optional[str] = None, checkpoint_tag: str = "eval",
              checkpoint_every: int = 500) -> DIResult:
-    """Full dI_hat estimate. `batches`/`log_p0s` come from one split only.
-
-    `checkpoint_dir`, if given, makes the permutation nulls and the bootstrap resumable:
-    progress is saved to `{checkpoint_dir}/{checkpoint_tag}_{null}.npy` /
-    `..._bootstrap.npy` every `checkpoint_every` draws, and reloaded on the next call with
-    the same dir/tag/n_perm/n_boot. A crash (or anything else that kills the process)
-    loses at most `checkpoint_every` draws instead of the whole multi-hour pass -- this
-    loop is the expensive part of E1/E2 and has no other persistence until it returns.
-    """
     model.eval()
     if log_p0s is None or any(lp is None for lp in log_p0s):
         dev = next(model.parameters()).device
@@ -352,11 +293,6 @@ def evaluate(model, batches, log_p0s=None, nulls=("sentence_derangement", "tempo
 
 @torch.no_grad()
 def zero_gamma_check(model, batches, log_p0s=None) -> float:
-    """Structural null-invariance: with gamma == 0, max |dI| must be ~0.
-
-    This is written to the results file, not merely asserted in a test, because it is
-    the standing evidence that the estimator's zero point is real.
-    """
     dev = next(model.parameters()).device
     if log_p0s is None or any(lp is None for lp in log_p0s):
         log_p0s = [model.prior.log_probs(b["token_ids"].to(dev)).cpu() for b in batches]
