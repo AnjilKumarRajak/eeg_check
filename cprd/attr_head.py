@@ -1,18 +1,4 @@
-"""Attribute-fusion head: a light semantic evidence channel for the selector.
 
-Sentence-level attributes (task/corpus topic; sentiment/relation when label files are
-supplied) decode from EEG far more reliably than word identity (GLIM: topic 93.5%).
-This head turns that into selection evidence:
-
-    train:   logistic probe  mean-pooled EEG -> attribute class     (train split only)
-    select:  score(candidate) = log P_head(attr(candidate) | EEG)
-
-Candidates are corpus sentences, so attr(candidate) is KNOWN metadata (its task), never
-inferred from text by a model that could leak content. Fused score:
-
-    S(y) = dI_ratio(y) + beta * attr_score(y),   beta tuned on VAL only (beta=0 row is
-                                                 the automatic ablation)
-"""
 from __future__ import annotations
 
 import numpy as np
