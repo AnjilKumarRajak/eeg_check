@@ -1,20 +1,4 @@
-#!/usr/bin/env python3
-"""E10: per-task, per-subject and per-surprisal-decile breakdown of the E2 channel bound.
 
-Re-analysis of the E2 measurement (no new test access, no new training): the E2 stage
-stored, for every observed token of the validation measurement half and each null, the
-running log-sum-exp of the per-token log-likelihood ratio over its M permutation draws
-(eval_ckpt/<tag>_<null>_lsetok.npy). Re-running the real forward pass in the same order
-gives T_t(real); the per-token InfoNCE bound is then
-
-    I_t = T_t - log( (e^{T_t} + sum_m e^{T_t^{(m)}}) / (M+1) )
-
-and can be aggregated over any subset of tokens: by ZuCo task (SR / NR / TSR / NR-2.0),
-by subject, and by decile of the prior's surprisal -log p0(w_t) (reviewer items 14, 29, 30).
-Uncertainty: bootstrap over unique-text clusters within each subset.
-
-    python experiments/e10_breakdown.py <E2 args...>   (same flags as the E2 stage)
-"""
 from __future__ import annotations
 
 import json
