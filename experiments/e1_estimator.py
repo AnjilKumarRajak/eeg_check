@@ -1,27 +1,4 @@
-#!/usr/bin/env python3
-"""E1 (Phase 1): estimator validation on channels of KNOWN capacity. Writes gate_estimator.
 
-Design (post-audit):
-  * PARITY: the synthetic model/training is EXACTLY what E2 uses (same ModelConfig
-    defaults, same objective — no contrastive asymmetry), so passing E1 validates the
-    procedure that produces the real numbers.
-  * SEEDS: every sweep point runs a fixed set of seeds; ALL attempts are ledgered
-    (metric 'e1_attempt'); the judged value is the MEDIAN — no best-of-k.
-  * PARTIAL PASS: the gate passes if the null point is clean and at least the smallest
-    non-zero capacity is recovered; `detail.validated_range_bits_per_token` records how
-    far validation reaches, `detail.partial_pass` marks it, and downstream ledger
-    records carry 'estimator_partial'. Full pass requires the whole sweep + calibration.
-    => you never need to hand-edit this gate to proceed; a partial pass unblocks E2+
-    with honest labeling, and `experiments/override_gate.py` exists for anything else.
-  * RESUME: per-point training uses resumable train-state files; the sweep itself
-    checkpoints to runs/e1_sweep_state.json so an interrupted E1 continues where it was.
-
-    smoke:  python experiments/e1_estimator.py --prior tiny --sweep 0,1 --seeds 0 \
-                --n-null 6 --n-sent 300 --epochs 25 --lr 3e-3 --relaxed
-    full:   python experiments/e1_estimator.py --prior causal_lm --prior-model gpt2-large \
-                --sweep 0,0.05,0.1,0.25,0.5,1,2 --seeds 0,1,2 --n-sent 2000 \
-                --n-null 100 --epochs 50 --lr 1e-3 --n-perm 1000
-"""
 from __future__ import annotations
 
 import json
@@ -48,10 +25,6 @@ LN2 = math.log(2.0)
 
 
 def embedding_aligned_clusters(prior, n_clusters: int, seed: int) -> np.ndarray:
-    """Assign each vocab token to a cluster by its position in the prior's OWN output
-    embedding geometry — the injected code is then expressible by the rank-r tilt,
-    making E1 a fair test of the production parameterization rather than of an
-    arbitrary token%K code the tilt cannot represent."""
     with torch.no_grad():
         omega = prior.omega.detach().float().cpu()
         g = torch.Generator().manual_seed(seed)
@@ -67,8 +40,6 @@ def embedding_aligned_clusters(prior, n_clusters: int, seed: int) -> np.ndarray:
 @torch.no_grad()
 def sample_prior_sentences(prior, n: int, seed: int, device, min_len: int = 6,
                            max_len: int = 14, batch: int = 64) -> list:
-    """Ancestral samples from the frozen prior (top-k 0, temperature 1): the synthetic
-    token marginal IS the prior, as in reading. Lengths uniform in [min_len, max_len]."""
     g = torch.Generator(device="cpu").manual_seed(seed)
     torch.manual_seed(seed)                        # multinomial draws (device generator)
     prior.model.to(device)
@@ -88,10 +59,6 @@ def sample_prior_sentences(prior, n: int, seed: int, device, min_len: int = 6,
 
 
 def balanced_embedding_clusters(prior, n_clusters: int, seed: int, token_seqs: list) -> np.ndarray:
-    """Clusters = contiguous bands of the projection of Omega onto a random direction,
-    with band edges at equal EMPIRICAL PRIOR MASS (from the sampled token stream), so
-    the cluster prior is uniform (H(cluster) = log2 K) and every cluster is a slab of
-    the embedding space (representable by a rank-1 nonlinear tilt)."""
     with torch.no_grad():
         omega = prior.omega.detach().float().cpu()
         g = torch.Generator().manual_seed(seed)
@@ -109,13 +76,6 @@ def balanced_embedding_clusters(prior, n_clusters: int, seed: int, token_seqs: l
 
 
 def run_point(b: float, seed: int, args, prior, train_it: bool = True):
-    """Train + evaluate one (capacity, seed) point with the E2-parity procedure.
-
-    Parity with E2 (2026-09 fixes): the model is TRAINED at every sweep point
-    including b=0 (an untrained b=0 point never exercises the train-and-select
-    procedure whose zero point is being validated), checkpoint selection uses the
-    selection half of the synthetic val set, and dI_hat/p are measured on the
-    disjoint measurement half -- exactly as E2 does on ZuCo."""
     ch = make_channel(bits=b, seed=seed, n_mc=200_000 if not args.limit else 20_000)
     tok_clusters = None
     n = args.n_sent
@@ -144,9 +104,6 @@ def run_point(b: float, seed: int, args, prior, train_it: bool = True):
         train(model, tr, va_sel, mcfg, tcfg,
               os.path.join(args.runs_dir, "ckpt_synth"),
               state_tag=f"e1_{config_key(args)[:16]}_b{b}_s{seed}")
-    # train() is the only thing that moves the model onto args.device, and it is
-    # SKIPPED at b=0 (n_clusters==1). Without this the null/calibration points
-    # evaluate on CPU -- same arithmetic, ~10x the wall-time. Placement only.
     model.to(args.device)
     if getattr(args, "eval_gamma", None) is not None:
         model.tilt.gamma_mode, model.tilt.gamma_const = "constant", float(args.eval_gamma)
@@ -179,9 +136,6 @@ def run_point(b: float, seed: int, args, prior, train_it: bool = True):
 
 
 def config_key(args) -> str:
-    """Everything that determines an E1 result. The sweep state and per-point training
-    state are keyed by it, so a re-run with a different config never reuses stale
-    (true, recovered, p) values (the Sept audit found a copied pre-fix gate)."""
     from cprd.audit import sha256_of
     tc = train_config_from_args(args, seed=0, n_perm_val=20).to_dict()
     from common import model_config_from_args
@@ -273,7 +227,6 @@ def main():
                                   passed_recovery=(rec >= 0.15 * bt and p < 0.05),
                                   passed_never_overshoot=(rec <= bt + 0.05))
         elif args.gate_mode == "lower_bound" and bt > 0:
-            # a bound must be detected and must not exceed the truth; tightness is reported
             o = ValidationOutcome(b_nominal=b, b_true=bt, b_recovered=rec, p_value=p,
                                   passed_recovery=(rec > 0 and p < 0.05),
                                   passed_never_overshoot=(rec <= bt + 0.05))
@@ -300,7 +253,6 @@ def main():
             save_state(state_path, st)
         ks_p = ks_uniform(np.asarray(null_ps))
         calib_status = "done"
-    # a non-finite KS p (e.g. --n-null 0/1) is NOT a passed calibration
     calib_ok = (calib_status == "done"
                 and ((np.isfinite(ks_p) and ks_p > 0.05) or args.relaxed))
     if calib_status == "done":
@@ -309,17 +261,10 @@ def main():
         print("  calibration: DEFERRED (full pass unavailable; partial pass possible)",
               flush=True)
 
-    # ---- verdict: full / partial / fail (no hand-editing ever needed) ----
     zero_pts = [o for o, b in zip(outcomes, sweep_bs) if b <= 0]
     nz = sorted([(b, o) for b, o in zip(sweep_bs, outcomes) if b > 0])
     zero_ok = all(o.ok for o in zero_pts) if zero_pts else True
     no_overshoot_all = all(o.passed_never_overshoot for o in outcomes)
-    # 2026-09-16: the old rule took the largest capacity passing CONTIGUOUSLY from zero,
-    # which (with a vacuous small-b rule) let "validated 0-0.05" certify an estimator
-    # that recovered nothing. The honest semantics are a RESOLUTION FLOOR: the smallest
-    # injected capacity the estimator demonstrably recovers (>=50%, p<0.05). A channel
-    # reading below that floor is "below the instrument's resolution", not "measured".
-    # lower-bound mode adds MONOTONICITY: the recovered value must not decrease with b
     if args.gate_mode == "lower_bound" and len(nz) >= 2:
         recs = [o.b_recovered for _, o in nz]
         if any(recs[i + 1] < recs[i] - 0.02 for i in range(len(recs) - 1)):
@@ -328,9 +273,6 @@ def main():
                                         p_value=o.p_value, passed_recovery=False,
                                         passed_never_overshoot=o.passed_never_overshoot)) for b, o in nz]
     validated = sorted(b for b, o in nz if o.ok)
-    # the floor must be MONOTONE: the smallest b such that every larger injected
-    # capacity is also recovered (one lucky small-b pass with larger failures is not
-    # a resolution the instrument has)
     resolution_floor = None
     for b_, o_ in sorted(nz, reverse=True):
         if not o_.ok:
