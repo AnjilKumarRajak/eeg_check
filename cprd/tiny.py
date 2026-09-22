@@ -1,8 +1,4 @@
-"""TinyCausalLM: a small but genuinely causal reference LM for smoke runs and tests.
 
-Deliberately a working causal model (real masked self-attention) rather than a mock —
-the causality and zero-information gates must be able to fail against it.
-"""
 from __future__ import annotations
 
 import torch
@@ -48,8 +44,6 @@ class TinyCausalLM(ReferenceLM):
 
 
 class _WhitespaceTok:
-    """Deterministic whitespace tokenizer for smoke-mode dataset builds."""
-
     def __init__(self, vocab_size: int = 64):
         self.vocab_size = vocab_size
 
