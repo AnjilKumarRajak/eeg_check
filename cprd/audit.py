@@ -1,9 +1,4 @@
-"""Audit ledger: every reported number is a record, or it does not exist.
 
-The table renderer REFUSES to print any value lacking a ledger entry with a complete
-gates_passed list. This extends the existing pattern (DecodeResult carrying
-config_hash/checkpoint; zero_gamma_check written to results files) into a hard rule.
-"""
 from __future__ import annotations
 
 import hashlib
