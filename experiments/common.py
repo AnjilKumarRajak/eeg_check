@@ -1,8 +1,4 @@
-"""Shared driver plumbing: args, prior construction, dataset loading, model training.
 
-Every driver: refuses to run if its predecessor gate is missing/failed; writes its own
-gate artifact; appends every reported number to the audit ledger.
-"""
 from __future__ import annotations
 
 import argparse
@@ -29,20 +25,7 @@ def base_parser(desc: str) -> argparse.ArgumentParser:
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--prior", default="causal_lm", choices=["causal_lm", "tiny"])
     ap.add_argument("--prior-model", default="gpt2-large")
-    # --- evidence channel ---------------------------------------------------------
-    # 'eeg' is the 840-d band-power array (the paper's subject). 'gaze' is the 6-d
-    # eye-movement record per word, measured as a SEPARATE channel under the identical
-    # estimator, nulls and pre-registration -- never fed to the EEG model. Use its own
-    # --runs-dir (e.g. runs_gaze) so gates do not collide with the EEG run.
     ap.add_argument("--evidence", default="eeg", choices=["eeg", "gaze", "both"])
-    # --- optimisation recipe (NOT the objective) ------------------------------------
-    # Raw dI ascent has a collapse basin: at init ell(w) is uninformative, so pushing
-    # gamma up costs log Z, gamma is driven to ~0, and the encoder then receives no
-    # gradient (d dI/du is proportional to gamma). E1 showed this as seed-dependent
-    # recovery (0.00 / 0.41 / 0.83 of 2 injected bits). Holding gamma at a constant for
-    # the first few epochs lets the encoder/B learn ell before the gate can close. The
-    # objective and its optimum are unchanged; only the path is. Applies identically to
-    # E1 (parity) and E2-E4 through train_config_from_args.
     ap.add_argument("--gamma-warmup-value", type=float, default=1.0,
                     help="constant gamma during the warmup epochs (see TrainConfig)")
     ap.add_argument("--gamma-warmup-epochs", type=int, default=3,
@@ -69,11 +52,6 @@ def base_parser(desc: str) -> argparse.ArgumentParser:
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--lr", type=float, default=3e-4)
-    # --- training objective ------------------------------------------------------
-    # The pre-registered objective is raw dI ascent with model selection on validation
-    # dI_hat (null-corrected). The null-contrast term is an EXPLORATORY option carried
-    # over from the September investigation; it is OFF by default and any run that
-    # turns it on is labelled 'objective=hybrid_contrast' in its ledger records.
     ap.add_argument("--train-contrast", action="store_true",
                     help="EXPLORATORY: add softplus(-(dI_real - dI_null)) to the loss")
     ap.add_argument("--contrast-weight", type=float, default=1.0)
@@ -88,11 +66,6 @@ def base_parser(desc: str) -> argparse.ArgumentParser:
     ap.add_argument("--free-tilt-hidden", type=int, default=64, help="hidden width of the nonlinear tilt MLP")
     ap.add_argument("--estimand", default="mean_null", choices=["mean_null", "nce"],
                     help="which statistic is the reported dI_hat (gates/ledger); the other is recorded alongside")
-    # --- reproducibility ----------------------------------------------------------
-    # Deterministic kernels are ON by default. The September rank sweep showed that
-    # with non-deterministic CUDA attention the same (seed, config, data) can land in
-    # different optima; determinism does not fix that instability, it makes it
-    # reproducible so it can be seen. Disable only for a throughput benchmark.
     ap.add_argument("--no-deterministic", dest="deterministic", action="store_false",
                     help="allow non-deterministic CUDA kernels (faster, not reproducible)")
     ap.set_defaults(deterministic=True)
@@ -100,9 +73,6 @@ def base_parser(desc: str) -> argparse.ArgumentParser:
 
 
 def apply_determinism(args) -> None:
-    """Force reproducible kernels. Idempotent; safe on CPU/MPS (no-ops where N/A)."""
-    # nn.TransformerEncoder's nested-tensor fast path is not implemented on MPS and is
-    # never needed for correctness; disabling it is free on CUDA/CPU.
     try:
         torch.backends.mha.set_fastpath_enabled(False)
     except Exception:
@@ -128,8 +98,6 @@ def apply_determinism(args) -> None:
 
 
 def train_config_from_args(args, seed=None, **overrides) -> TrainConfig:
-    """Single place that turns CLI args into a TrainConfig, so every driver (E1 parity,
-    E2, E3, E4, E7, E8) trains under the identical objective and the ledger can name it."""
     kw = dict(epochs=args.epochs, batch_size=args.batch_size, device=args.device,
               seed=args.seed if seed is None else seed, lr=args.lr,
               train_null_contrast=bool(getattr(args, "train_contrast", False)),
@@ -184,9 +152,6 @@ _SPIKE = {}
 
 
 def apply_spike(sents, args, path):
-    """Injects a known, weak, gaze-derived signal into the EEG features (power analysis on the
-    real EEG pipeline): eeg' = eeg + alpha * sd_f * (z_gaze @ G), G a fixed random 6x840 map,
-    z_gaze the gaze record standardised on the train split, sd_f the per-feature EEG std."""
     if "stats" not in _SPIKE:
         trp = os.path.join(os.path.dirname(path), "zuco2_train.h5")
         tr_e = read_split(trp, limit=args.limit or None, evidence="eeg")
@@ -209,11 +174,6 @@ def apply_spike(sents, args, path):
 
 
 def apply_structure_only(sents, seed: int):
-    """Structure-only control (gaze): keep the token grouping (sub-tokens of one word share one
-    vector, exactly as in the real data) and the sentence lengths, but replace every word's gaze
-    vector by that of a uniformly random word drawn from the whole split, independent of the
-    sentence text. Any information this arm recovers comes from segmentation/length structure,
-    not from gaze content."""
     import copy
     rng = np.random.default_rng(seed)
     pool = []
@@ -254,18 +214,6 @@ def prepare_batches(sentences, prior, device, window=1, batch_size=8):
 
 
 def train_model(prior, train_sents, val_sents, args) -> PriorResidualModel:
-    """Train (or resume/reuse) the model for this exact (config, data, prior) triple.
-
-    The cache key includes the train/val split fingerprints and the prior identity —
-    a checkpoint can only ever be reused for the same data and the same reference
-    measure. Per-epoch training state makes interruptions lose at most one epoch.
-
-    Checkpoint selection uses ONLY the selection half of `val_sents`
-    (`selection_measurement_split`); drivers report channel numbers on the
-    measurement half, so the reported dI_hat is not the maximum over the epochs it
-    was selected on. `model.ckpt_key` identifies the trained model for any
-    downstream resumable state (permutation/bootstrap checkpoints).
-    """
     from cprd.audit import sha256_of
     from cprd.data import selection_measurement_split
     mcfg = model_config_from_args(args)
@@ -320,10 +268,6 @@ def ledger_for(args) -> Ledger:
 
 
 def base_record(args, split_fp: str, experiment: str, gates: list) -> dict:
-    """Provenance skeleton. `gates` is the driver's REQUIRED list; what is recorded is
-    the intersection-with-reality from collect_green_gates (so an overridden gate shows
-    up as '<name>_OVERRIDDEN', a partial pass as '<name>_partial', and a gate the
-    driver hoped for but that isn't green simply doesn't appear)."""
     actual = collect_green_gates(args.runs_dir)
     recorded = [a for a in actual
                 if any(a == g or a.startswith(f"{g}_") for g in gates)]
