@@ -1,15 +1,4 @@
-#!/usr/bin/env python3
-"""E14: low-bit calibration of the estimator with the evaluation gain chosen on the selection half.
 
-For each known capacity b (bits/token) and seed: build the prior-matched synthetic channel exactly as E1,
-train with the E2-parity procedure (re-using a finished E1 training state when one exists), then
-  1. score the SELECTION half at each gamma in --gamma-grid (derangement null, few draws) and pick the
-     gamma with the largest InfoNCE bound  -> never reported as a result;
-  2. score the disjoint MEASUREMENT half at the default gain and at the picked gain with the full
-     permutation protocol (both nulls).
-Output: <runs-dir>/e14_lowbit.jsonl (one row per b, seed) and gate_lowbit.json (summary: mean recovered,
-tightness, detection power, false-positive rate at b=0, never-exceeds-truth check).
-"""
 from __future__ import annotations
 import json, math, os, sys
 import numpy as np, torch
@@ -35,7 +24,6 @@ def main():
     ap.add_argument("--gamma-grid", default="0.127,0.25,0.5")
     ap.add_argument("--n-perm-select", type=int, default=40)
     ap.add_argument("--reuse-ckpt-dir", default="", help="ckpt_synth dir of a finished E1 run with the same config")
-    # fields config_key() reads, fixed to the E1 power-run values so finished training states are re-used
     ap.add_argument("--synth-tokens", default="prior"); ap.add_argument("--gate-mode", default="lower_bound")
     args = ap.parse_args()
     apply_determinism(args)
