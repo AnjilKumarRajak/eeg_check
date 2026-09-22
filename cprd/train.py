@@ -1,14 +1,4 @@
-"""Training phi against the information-gain objective.
 
-The prior is frozen and the token sequences are fixed, so `log p0` is computed ONCE per
-split and reused for every epoch and every permutation. That is a correctness property
-as much as a speed one: it guarantees train-time and eval-time use a bit-identical
-reference measure.
-
-Model selection is on held-out validation dI_hat (bias-corrected), never on raw dI and
-never on train dI. Raw dI rewards exploiting the prior's weaknesses; train dI rewards
-memorisation.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -140,12 +130,7 @@ def train(model: PriorResidualModel, train_sents, val_sents,
     order = list(range(len(tr_batches)))
     gamma_mode_cfg = model.tilt.gamma_mode
 
-    # Model selection is only meaningful in the gate mode the model will be USED in:
-    # during warmup gamma is held constant and the a/b/c gate parameters receive no
-    # gradient, so a warmup-epoch state evaluated at gamma=const is a different model
-    # from the same weights under the learned gate. Warmup epochs are therefore not
-    # eligible as "best" and do not count toward patience (unless the whole run is
-    # warmup, e.g. a tiny smoke run).
+
     warm = tcfg.gamma_warmup_epochs if tcfg.gamma_warmup_epochs < tcfg.epochs else 0
 
     _out: dict = {}
@@ -200,9 +185,6 @@ def _train_epochs(model, tcfg, start_epoch, order, tr_batches, tr_lp0, va_batche
             aux_real = model.encoder.aux_loss() if hasattr(model.encoder, "aux_loss") else None
             objective = out["per_sentence_mean"].mean()
             if tcfg.objective == "nce":
-                # InfoNCE: per token, the real evidence must out-score M deranged
-                # evidence vectors. T = dI (log-likelihood ratio vs the prior); the
-                # positive is included in the denominator, so the bound is <= log(M+1).
                 v = batch["valid"] & batch["observed"]
                 T_pos = out["per_token"]
                 negs = []
@@ -220,22 +202,6 @@ def _train_epochs(model, tcfg, start_epoch, order, tr_batches, tr_lp0, va_batche
             if getattr(tcfg, "decorr_weight", 0.0) > 0 and aux_real is not None:
                 loss = loss + tcfg.decorr_weight * aux_real.to(loss.device)
             if tcfg.train_null_contrast:
-                # A LINEAR contrast (real - null) is degenerate no matter which null it's
-                # taken against: any permutation-based null disrupts local temporal
-                # continuity in a way that's much easier for phi to key on than the
-                # genuine, often-subtle per-token EEG-token correspondence, and a linear
-                # objective has no saturation -- there is always more gradient reward for
-                # widening the gap further, so it runs away (confirmed empirically with
-                # sentence_derangement AND temporal_roll alike, and a small linear weight
-                # 0.05 just reproduces the zero-contrast local optimum instead). Fix:
-                # a logistic/margin (softplus) contrast, the standard NCE-style choice.
-                # Its gradient saturates once real already beats null by a comfortable
-                # margin, removing the incentive to keep crashing the null indefinitely,
-                # while still supplying a non-vanishing gradient at margin==0 -- unlike
-                # pure real-ascent, which the model satisfies for free via an
-                # evidence-independent marginal shortcut that cancels exactly under the
-                # null correction (also confirmed empirically: recovered dI_hat pinned at
-                # 0.000 regardless of the true injected bits).
                 w, o = NULLS[tcfg.contrast_null](
                     batch["window"], batch["win_observed"], batch["valid"],
                     seed=tcfg.seed + epoch * max(1, len(order)) + i,
@@ -267,12 +233,6 @@ def _train_epochs(model, tcfg, start_epoch, order, tr_batches, tr_lp0, va_batche
             gammas.append(float(out["gamma"][v].mean()))
             unorms.append(float(out["u_norm"][v].mean()))
             neg_fracs.append(float((out["per_token"][v] <= 0).float().mean()))
-
-        # Both nulls, and checkpoint selection requires the MIN of the two: picking the
-        # epoch that peaks against a single null (30 noisy looks at held-out data) is
-        # itself a selection-bias route to an inflated number, and a gap that survives
-        # only one null is exactly the length/amplitude-artifact case nulls.py warns
-        # about. Requiring both to agree makes that shortcut much harder to reach.
         res = evaluate(model, va_batches, va_lp0,
                        nulls=("sentence_derangement", "temporal_roll"), n_perm=tcfg.n_perm_val,
                        seed=tcfg.seed)
@@ -280,10 +240,6 @@ def _train_epochs(model, tcfg, start_epoch, order, tr_batches, tr_lp0, va_batche
             crit = min(res.dI_hat_nce["sentence_derangement"], res.dI_hat_nce["temporal_roll"])
         else:
             crit = min(res.dI_hat["sentence_derangement"], res.dI_hat["temporal_roll"])
-
-        # Degeneracy signature: real dI drifting negative while the null-corrected gap
-        # keeps climbing means phi is learning to crash the null arm, not to predict the
-        # gold token better -- the gap is real but not evidence of recovered information.
         if epoch > 5 and res.dI_real_observed < -0.5 and crit > 0 and \
                 history and res.dI_real_observed < history[-1]["val_dI_observed"] - 1e-6:
             print(f"  [degeneracy warning] val dI(obs)={res.dI_real_observed:+.4f} still "
