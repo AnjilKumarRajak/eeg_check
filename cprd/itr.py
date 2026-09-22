@@ -1,14 +1,4 @@
-"""Information transfer rate: Wolpaw AND Nykopp, three pre-registered denominators.
 
-Wolpaw's formula is the literature standard but is biased off-uniform error
-distributions; Nykopp's confusion-matrix mutual information is the coherent quantity.
-Every ITR row reports both; claims are stated on Nykopp.
-
-Denominators (all reported, most conservative primary):
-    T1  per-sentence reading time from eye-tracking (sum of fixations + saccades)
-    T2  full trial time incl. inter-sentence interval  <- primary
-    T3  nominal: n_words / population reading rate (240 wpm)
-"""
 from __future__ import annotations
 
 import math
@@ -29,11 +19,6 @@ def wolpaw_bits_per_selection(N: int, acc: float) -> float:
 
 
 def nykopp_bits_per_selection(confusion: np.ndarray) -> float:
-    """Mutual information of the selection channel from its confusion matrix.
-
-    confusion[i, j] = count of (true candidate slot i, chosen slot j). With pools
-    randomized, slots are exchangeable; I(X;Y) computed from the empirical joint.
-    """
     C = np.asarray(confusion, dtype=np.float64)
     n = C.sum()
     if n <= 0:
@@ -48,14 +33,6 @@ def nykopp_bits_per_selection(confusion: np.ndarray) -> float:
 
 
 def hit_confusion(per_pool_hit: list, N: int) -> np.ndarray:
-    """Exchangeable NxN confusion implied by hit/miss data.
-
-    With randomized slots, hits distribute uniformly over the diagonal and misses
-    uniformly over the off-diagonal; the MI of this matrix coincides with Wolpaw's
-    formula (log2 N at perfect accuracy). Nykopp's value-add appears when a REAL
-    full confusion (per-slot counts, non-uniform errors) is supplied instead —
-    `nykopp_bits_per_selection` accepts either.
-    """
     hits = float(np.sum(per_pool_hit))
     misses = float(len(per_pool_hit)) - hits
     C = np.zeros((N, N))
@@ -87,9 +64,6 @@ class ITRRow:
 def itr_row(N: int, per_pool_hit: list, denominators_s: dict) -> ITRRow:
     acc = float(np.mean(per_pool_hit)) if per_pool_hit else 0.0
     wb = wolpaw_bits_per_selection(N, acc)
-    # The hit/miss-implied confusion MI is symmetric around chance (acc=0.4 at N=2 gives
-    # >0 bits). Below-chance accuracy from a selector that maximises its score is not
-    # information transfer; like Wolpaw, report 0 at or below chance.
     nb = (nykopp_bits_per_selection(hit_confusion(per_pool_hit, N))
           if acc > 1.0 / max(1, N) else 0.0)
     itr = {}
@@ -105,13 +79,7 @@ def reading_time_denominators(covariates=None, texts: list | None = None,
                               n_words_by_text: dict | None = None,
                               trial_overhead_s: float = 2.0,
                               wpm: float = 240.0) -> dict:
-    """Build the three denominators (seconds/selection).
 
-    T1 needs the covariate table (sum TRT per sentence, samples@500Hz -> s);
-    T2 = T1 + fixed overhead (primary, most conservative);
-    T3 = nominal from word count.
-    Missing inputs yield only the computable subset — never a silent default.
-    """
     out = {}
     if covariates is not None and texts:
         per_text = []
