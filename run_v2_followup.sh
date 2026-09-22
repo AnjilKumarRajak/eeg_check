@@ -1,6 +1,4 @@
-#!/usr/bin/env bash
-# After run_v2.sh: gaze E4 seed replicates, E8 scaling (gaze), calibration-label refresh, reports.
-# Skipped by decision (2026-09-17): E6 baselines, E7 LOSO, E9 retrofit, instance split.
+
 set -uo pipefail; cd "$(dirname "$0")"
 export HF_HUB_DISABLE_PROGRESS_BARS=1 NLTK_DATA=$HOME/nltk_data PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 V=$HOME/venvs/cprd/bin/python; PRIOR="--prior causal_lm --prior-model gpt2-large"
