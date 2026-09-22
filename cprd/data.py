@@ -1,20 +1,4 @@
-"""ZuCo loading with missingness and metadata preserved end-to-end.
 
-Measured properties of <PROJECT_ROOT>/zuco_*.h5:
-
-    train 7511 / val 925 / test 931 sentences
-    840 = 105 channels x 8 bands, float32
-    43.5% of test tokens are FULLY NaN (unfixated words); nan_mask agrees with the
-      all-NaN rows on 27074/27074 tokens -- there are no partial rows
-    no BOS/EOS tokens; sentences end with id 4 ('.')
-    zero sentence-text overlap across the three splits
-    the test split is only 79 UNIQUE texts, read by up to 24 subjects
-    subject_id is the literal string 'UNKNOWN' for all 9367 sentences
-
-The last two facts are load-bearing and are surfaced, not hidden: `text` is the
-clustering unit for every confidence interval, and subject-stratified analysis is
-impossible on this file.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -70,16 +54,6 @@ class SplitStats:
 
 def read_split(h5_path: str, limit: Optional[int] = None,
                evidence: str = "eeg") -> list[Sentence]:
-    """Read one split. Never mixes splits: one file in, one list out.
-
-    evidence="eeg"  -> `eeg` is the 840-d band-power array, NaN/unobserved where unfixated.
-    evidence="gaze" -> `eeg` is the 6-d gaze array (build.GAZE_COLS), fully observed:
-                       a skipped word is a real observation of the eye-movement process.
-    evidence="both" -> `eeg` is [eeg(840, NaN->0 where unfixated) | gaze(6)], fully
-                       observed. The combined channel measures I(text; EEG, gaze); the
-                       EEG-beyond-gaze increment is  I(both) - I(gaze), reported by report.py.
-    Everything downstream (windows, nulls, verifier, estimator) reads only `eeg` and
-    `observed`, so the two channels run through one identical pipeline."""
     if not os.path.isabs(h5_path):
         raise ValueError(f"use an absolute path, got {h5_path!r}")
     if evidence not in EVIDENCE_KINDS:
@@ -124,15 +98,6 @@ def read_split(h5_path: str, limit: Optional[int] = None,
 
 
 def selection_measurement_split(sents: list[Sentence]) -> tuple[list[Sentence], list[Sentence]]:
-    """Split a validation list into disjoint (selection, measurement) halves by TEXT.
-
-    Checkpoint selection maximises val dI_hat over epochs; measuring dI_hat, its
-    p-value and CI on the same sentences reports the maximum of noisy looks
-    (winner's curse) and invalidates the permutation p-value. Selection therefore
-    uses one half and every reported channel number the other. Assignment is a
-    stable hash of the text, so every reading of a text lands in the same half and
-    the split is identical across runs, drivers and evidence channels.
-    """
     sel, meas = [], []
     for s in sents:
         h = int(hashlib.sha1(s.text.strip().lower().encode("utf-8")).hexdigest(), 16)
@@ -175,14 +140,6 @@ def assert_no_text_leakage(splits: dict[str, list[Sentence]]) -> None:
 
 
 def recover_word_groups(eeg: np.ndarray, observed: np.ndarray) -> list[tuple[int, int]]:
-    """Recover word boundaries from token-level EEG.
-
-    Preprocessing replicated each word's 840-d vector across that word's subword
-    tokens, so runs of identical consecutive rows reconstruct words. NaN rows never
-    compare equal, so missing runs are grouped on the mask instead.
-
-    Needed only for the causal-LM prior, which re-tokenizes from raw text.
-    """
     T = eeg.shape[0]
     if T == 0:
         return []
@@ -200,18 +157,6 @@ def recover_word_groups(eeg: np.ndarray, observed: np.ndarray) -> list[tuple[int
 
 
 def recover_word_spans(text: str, stored_ids: np.ndarray, stored_tok) -> Optional[list[tuple[int, int]]]:
-    """Exact (start, end) spans into `stored_ids`, one per whitespace word.
-
-    The HDF5's tokenization is corrupted in a *deterministic* way: each whitespace word
-    was tokenized separately with no leading space and no special tokens, then
-    concatenated (verified: 100.0% exact BPE match on 200 test sentences). Reproducing
-    that scheme and matching run lengths recovers word boundaries exactly.
-
-    Returns None if the reconstruction does not match, so the caller can refuse the
-    sentence instead of guessing. Run-length grouping of identical EEG rows is NOT used:
-    it recovers only ~6% of sentences, because consecutive unfixated words are all-NaN
-    and collapse into one group.
-    """
     spans, pos = [], 0
     stored = list(map(int, stored_ids))
     for w in text.split():
@@ -244,12 +189,6 @@ class RetokenizeStats:
 
 
 def retokenize_split(sents: list[Sentence], stored_tok, new_tok) -> tuple[list[Sentence], RetokenizeStats]:
-    """Rebuild a split under a correct tokenization, keeping EEG aligned 1:1.
-
-    Word EEG is taken from the first token of each recovered span (all tokens in a span
-    carry the same replicated vector), then re-replicated across that word's new subword
-    tokens. Sentences whose spans do not reconstruct exactly are refused and counted.
-    """
     out: list[Sentence] = []
     st = RetokenizeStats()
     for s in sents:
@@ -288,8 +227,6 @@ def retokenize_split(sents: list[Sentence], stored_tok, new_tok) -> tuple[list[S
 
 
 class PRDDataset(Dataset):
-    """Windows of word-level EEG aligned 1:1 with tokens, plus masks and metadata."""
-
     def __init__(self, sentences: list[Sentence], window: int = 1, max_len: int = 128):
         self.sents = sentences
         self.window = window
@@ -367,12 +304,6 @@ def collate(batch: list[dict]) -> dict:
 
 
 def dataset_fingerprint(h5_path: str) -> str:
-    """Content-based id for a split, recorded alongside every result.
-
-    Hashes the sorted set of sentence texts plus per-sentence token counts — a
-    regenerated file with different content can never silently reuse a fingerprint.
-    (The earlier filename+size hash could.)
-    """
     h = hashlib.sha256()
     with h5py.File(h5_path, "r") as f:
         g = f["sentences"]
