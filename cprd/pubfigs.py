@@ -1,11 +1,4 @@
-"""Publication figures (ICLR): 600 dpi, large bold type on both axes, PDF + PNG.
 
-Rendered ONLY from gate artifacts / ledgers of the runs dirs (v1: runs, runs_gaze,
-runs_both; v2: runs_v2, runs_v2_gaze, runs_v2_both) and the E1 probe JSON. No number is
-typed in by hand. Output: <out>/figN_<name>.{pdf,png}.
-
-    python -m cprd.pubfigs --out paper_figs
-"""
 from __future__ import annotations
 
 import argparse
@@ -91,7 +84,6 @@ def fig1_channels(out, version="v2"):
     return _save(plt, fig, out, f"fig1_channels_{version}")
 
 
-# ---------------------------------------------------------------- Fig 2: selection vs N
 def fig2_selection_vs_N(out, version="v2"):
     plt = _mpl()
     fig, ax = plt.subplots(figsize=(6.6, 4.8))
@@ -121,7 +113,6 @@ def fig2_selection_vs_N(out, version="v2"):
     return _save(plt, fig, out, f"fig2_selection_vs_N_{version}")
 
 
-# ---------------------------------------------------------------- Fig 3: E1 calibration
 def fig3_calibration(out):
     plt = _mpl()
     g2 = _gate("runs_v2", "estimator")
@@ -153,7 +144,6 @@ def fig3_calibration(out):
     return _save(plt, fig, out, "fig3_calibration")
 
 
-# ---------------------------------------------------------------- Fig 4: one-shot test arms
 def fig4_test_arms(out, version="v2"):
     plt = _mpl()
     arms = ["real", "zeroed", "gamma_zero", "derangement", "gaussian_matched", "amplitude_only", "position_only"]
@@ -181,7 +171,6 @@ def fig4_test_arms(out, version="v2"):
     return _save(plt, fig, out, f"fig4_test_arms_{version}")
 
 
-# ---------------------------------------------------------------- Fig 5: ITR axis
 def fig5_itr(out, version="v2"):
     plt = _mpl()
     pts = []
@@ -212,7 +201,6 @@ def fig5_itr(out, version="v2"):
     return _save(plt, fig, out, f"fig5_itr_axis_{version}")
 
 
-# ---------------------------------------------------------------- Fig 6: risk-coverage
 def fig6_risk_coverage(out, version="v2"):
     plt = _mpl()
     fig, ax = plt.subplots(figsize=(6.0, 4.6))
@@ -237,7 +225,6 @@ def fig6_risk_coverage(out, version="v2"):
     return _save(plt, fig, out, f"fig6_risk_coverage_{version}")
 
 
-# ---------------------------------------------------------------- Fig 7: scaling
 def fig7_scaling(out, version="v2"):
     g = _gate(DIRS[version]["gaze"], "scaling")
     if not g:
@@ -260,7 +247,6 @@ def fig7_scaling(out, version="v2"):
     return _save(plt, fig, out, f"fig7_scaling_{version}")
 
 
-# ---------------------------------------------------------------- Fig 8: estimator inconsistency (oracle probe)
 def fig8_oracle(out, probe_json="probes/probe_e1_oracle_tilt_bound.json"):
     if not os.path.exists(probe_json):
         return None
@@ -283,7 +269,6 @@ def fig8_oracle(out, probe_json="probes/probe_e1_oracle_tilt_bound.json"):
     return _save(plt, fig, out, "fig8_oracle_inconsistency")
 
 
-# ---------------------------------------------------------------- Fig 9: v1 vs v2 side by side (gaze/eeg/both bits)
 def fig9_v1_vs_v2(out):
     plt = _mpl()
     fig, ax = plt.subplots(figsize=(6.6, 4.6))
@@ -313,7 +298,6 @@ def fig9_v1_vs_v2(out):
     return _save(plt, fig, out, "fig9_v1_vs_v2")
 
 
-# ---------------------------------------------------------------- Fig 0: methodology pipeline
 def fig0_pipeline(out):
     """Six-lane pipeline schematic (same content as docs/methodology_pipeline.drawio).
     Text is wrapped to the box width and box heights follow the wrapped text."""
@@ -406,8 +390,6 @@ def fig0_pipeline(out):
     return _save(plt, fig, out, "fig0_pipeline")
 
 
-
-# ---------------------------------------------------------------- Fig 10: language quality vs information
 def fig10_quality_vs_information(out, version="v2"):
     """Headline separation: text-similarity of the selected candidate under real vs zeroed
     evidence (left) against the information lower bound (right), per channel."""
@@ -441,8 +423,6 @@ def fig10_quality_vs_information(out, version="v2"):
                  fontweight="bold", fontsize=13.5, y=1.03)
     return _save(plt, fig, out, f"fig10_quality_vs_information_{version}")
 
-
-# ---------------------------------------------------------------- Fig 11: breakdown (task/subject/surprisal)
 def fig11_breakdown(out, version="v2"):
     """Per-task, per-subject and per-surprisal-decile breakdown of the E2 InfoNCE bound
     (reviewer items 14, 29, 30), gaze and EEG side by side; re-analysis of the stored
