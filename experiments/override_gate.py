@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""Sanctioned gate override — the replacement for hand-editing gate JSON.
 
-    python experiments/override_gate.py runs estimator --reason "proceeding exploratory; \
-        E1 failed at b>=0.5, validated range 0-0.25"
-
-Preserves the original artifact inside the override, logs the deviation, and makes
-every downstream ledger record carry '<gate>_OVERRIDDEN' instead of '<gate>'.
-"""
 import argparse
 import os
 import sys
