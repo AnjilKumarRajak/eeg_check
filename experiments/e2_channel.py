@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""E2 (Phase 2): the channel measurement. Needs gate_build + gate_estimator.
-Writes gate_channel with bits/sentence — the number that sizes everything downstream.
 
-    python experiments/e2_channel.py --data-dir runs/data --prior causal_lm \
-        --prior-model gpt2-large --epochs 15 --n-perm 10000
-"""
 from __future__ import annotations
 
 import json
@@ -38,14 +32,9 @@ def main():
     args = parser.parse_args()
     apply_determinism(args)
     check_gate_artifact(args.runs_dir, "build")
-    # E2 runs whether or not E1 passed (run_campaign.sh relies on this): a failed or
-    # missing estimator gate is carried as a LABEL (records omit 'estimator';
-    # reading_vs_floor says UNCALIBRATED), never as a crash that loses the measurement.
     estimator_gate = read_gate_optional(args.runs_dir, "estimator")
     if (estimator_gate.get("detail", {}).get("mode") == "RELAXED_SMOKE"
             and args.prior != "tiny"):
-        # a production prior must never ride a smoke-mode estimator gate;
-        # tiny-prior runs ARE the smoke, so they may.
         raise RuntimeError(
             "gate_estimator is RELAXED_SMOKE; run strict E1 before production E2"
         )
@@ -76,9 +65,6 @@ def main():
         print(f"loaded E2 checkpoint for evaluation resume: {ckpt}", flush=True)
     else:
         model = train_model(prior, tr, va, args)
-
-    # VALIDATION split only here; the test split stays behind the prereg wrapper (e4/e5)
-    # measured on the held-out MEASUREMENT half (never the half used for selection)
     batches, lp0 = prepare_batches(va_meas, prior, args.device,
                                    window=args.window, batch_size=args.batch_size)
     res = evaluate(model, batches, lp0,
@@ -127,10 +113,7 @@ def main():
               "measurement_split": "val measurement half (text-hash); selection half used for checkpoint selection",
               "estimator_gate_passed": bool(estimator_gate.get("passed", False)),
               "null_note": "cross-sentence null rejects same-text donors"}
-    # Compare the reading to the estimator's demonstrated resolution floor (E1). A
-    # channel below the floor is not "measured at X"; it is "below what this
-    # instrument can resolve". Both the number and this verdict go in the gate.
-    # re-read: E1 may have been re-judged (more seeds) while this stage was running
+  
     estimator_gate = read_gate_optional(args.runs_dir, "estimator") or estimator_gate
     est_detail = (estimator_gate.get("detail") or {})
     floor = est_detail.get("resolution_floor_bits_per_token")
@@ -139,8 +122,7 @@ def main():
     if floor is None:
         detail["reading_vs_floor"] = "UNCALIBRATED (estimator recovered no injected capacity)"
     elif est_detail.get("gate_mode") == "lower_bound":
-        # a validated LOWER BOUND: the reading is compared with what the bound returns at
-        # the smallest detected capacity (its recovered value), not with the capacity itself
+
         tb = est_detail.get("tightness_by_b") or {}
         rec_floor = float(floor) * float(tb.get(str(floor), tb.get(str(float(floor)), 0.0)) or 0.0)
         detail["reading_vs_floor"] = (f"validated lower bound (E1 {est_detail.get('mode')}, gate_mode=lower_bound; "
