@@ -1,19 +1,4 @@
-"""Gaze/oculomotor covariate extraction from raw ZuCo .mat files.
 
-The verified pickles store only {content, nFixations, word_level_EEG}: no durations,
-positions or pupil size. The confound battery (gaze-residualized neural claims,
-abstention covariate partialling) requires exactly those, and they live only in the
-.mat. This module does ONE read-only pass and writes a flat CSV:
-
-    subject,task,sent_idx,text_hash,word_idx,word,nfix,ffd,gd,trt,gpt,pupil,word_len
-
-Durations are in SAMPLES at 500 Hz as stored (verified empirically: FFD=73 ~ 146 ms,
-a normal first fixation); convert with *2 to get ms. Missing values are empty fields,
-never imputed.
-
-ZuCo 1.0 tasks load with scipy.io.loadmat; ZuCo 2.0 (v7.3/HDF5) is handled with h5py
-via the same field names.
-"""
 from __future__ import annotations
 
 import csv
@@ -154,11 +139,7 @@ def extract_all(mat_root: str, out_csv: str,
 
 @dataclass
 class CovariateTable:
-    """In-memory covariate lookup keyed by (subject, text_hash, word_idx)."""
     rows: dict
-    # (subject, task, text_hash, word_idx) -> row. ZuCo 1 NR and TSR share sentences, so
-    # the same subject can read the same text in two tasks; `rows` (task-less key, kept
-    # for existing consumers) keeps only the last one, `rows_by_task` keeps both.
     rows_by_task: dict = None
 
     NUMERIC = ("nfix", "ffd", "gd", "trt", "gpt", "pupil", "word_len")
@@ -176,8 +157,6 @@ class CovariateTable:
         return cls(rows, by_task)
 
     def vector(self, subject: str, thash: str, word_idx: int) -> np.ndarray:
-        """Covariate vector [log1p(nfix), log1p(gd), log1p(trt), word_len, pupil];
-        NaN where unavailable. Log transforms per the reading-time literature."""
         r = self.rows.get((subject, thash, word_idx))
         if r is None:
             return np.full(5, np.nan)
