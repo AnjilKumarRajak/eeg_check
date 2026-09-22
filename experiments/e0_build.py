@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""E0: derive the model-ready dataset + covariate table. Writes gate_build.
 
-    python experiments/e0_build.py --pickle-root ~/datasets/ZuCo \
-        --mat-root ~/datasets/ZuCo --out runs/data --prior-model gpt2-large
-    (smoke)  python experiments/e0_build.py --smoke --out runs/data
-"""
 from __future__ import annotations
 
 import argparse
@@ -39,7 +33,6 @@ def main():
     _b.EEG_KEY = args.eeg_key
 
     if args.smoke:
-        # synthetic sentences through the SAME writer path, so schema and gates are real
         import h5py
         import numpy as np
         from cprd.synth import make_channel, make_synthetic_sentences
@@ -55,8 +48,6 @@ def main():
                 g0 = f.require_group("sentences")
                 for i, s in enumerate(ss):
                     T = int(s.token_ids.shape[0])
-                    # synthetic gaze record: fixated flag follows the EEG mask, the rest
-                    # is noise -- enough to exercise the --evidence gaze path end to end
                     gz = np.zeros((T, GAZE_DIM), dtype=np.float32)
                     gz[:, 0] = s.observed.astype(np.float32)
                     gz[:, 1:] = rng.normal(0.0, 1.0, size=(T, GAZE_DIM - 1)) * gz[:, :1]
