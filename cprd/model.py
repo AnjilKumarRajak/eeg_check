@@ -1,10 +1,4 @@
-"""PriorResidualModel: frozen prior + evidence encoder + rank-budgeted tilt.
 
-phi = {encoder, B, a, b, c, scale} is the complete trainable set. The prior and Omega
-never receive gradient, and `train()` is overridden so that putting the model in train
-mode cannot put the prior in train mode -- otherwise LM dropout would make p0 stochastic
-and train-time and eval-time would silently use different reference measures.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -33,35 +27,16 @@ class ModelConfig:
     gamma_mode: str = "learned"
     evidence: str = "eeg"          # "eeg" (840-d) | "gaze" (6-d) | "both" (846-d, EEG-beyond-gaze via report)
     evidence_dim: int = 840
-    # Centre u_t on its mean over the data (batch mean in training, running mean at
-    # eval). 2026-09-16 E1 finding: without this, raw dI ascent has a collapse basin --
-    # a CONSTANT u earns ~1.7 nats on synthetic data (and ~1 nat on ZuCo) by tilting
-    # the prior toward the token marginal without reading any evidence, and because
-    # uninformative evidence-dependent variation only raises log Z (Jensen), the
-    # encoder is driven to a constant function (probe: u std 5e-4 after training vs
-    # 0.14 at init; dI real == dI permuted to 4 decimals at 2 injected bits/token).
-    # With centring a constant encoder yields zero tilt and zero dI, so the only way
-    # to earn dI is evidence-dependent structure. The ESTIMAND is unchanged: a
-    # constant tilt component cancels exactly in dI(real) - dI(null) anyway.
     center_u: bool = True
     center_momentum: float = 0.05
-    # Nonlinear rank-k tilt (2026-09-17, Findings §3): ell(v) = <Omega_v, B u> + <phi(Omega_v), W u>
-    # with phi a small MLP over the FROZEN prior embedding (d_model -> free_tilt_hidden -> k).
-    # The linear-in-Omega tilt cannot represent class structure over the vocabulary
-    # (oracle: <= 0.14 of 1 injected bit); phi can carve half-spaces of it, and because
-    # it is a function of Omega_v it generalises to tokens unseen in training (a free
-    # V x k table does not: it memorises). Z stays exact over the full vocabulary.
-    # free_tilt_rank = 0 reproduces the old model exactly.
     free_tilt_rank: int = 0
     free_tilt_hidden: int = 64
-    # "concat" (default, original) | "gated": u = norm(W_g u_g + sigmoid(gate) * W_e u_e); the
-    # EEG branch is only used where the learned gate opens (mixture-of-experts style).
     fusion: str = "concat"
 
     def to_dict(self) -> dict:
         d = asdict(self)
         if d.get("fusion") == "concat":
-            d.pop("fusion")            # keeps checkpoint keys of pre-existing runs unchanged
+            d.pop("fusion")            
         return d
 
 
@@ -69,8 +44,6 @@ class PriorResidualModel(nn.Module):
     def __init__(self, prior: ReferenceLM, cfg: ModelConfig):
         super().__init__()
         self.cfg = cfg
-        # NOT registered as a submodule: keeps the LM out of state_dict() entirely, so
-        # checkpoints are phi-only and a fine-tuned prior cannot be shipped by accident.
         object.__setattr__(self, "_prior", prior.freeze())
         if cfg.evidence == "gaze":
             self.encoder = GazeEncoder(
@@ -105,10 +78,6 @@ class PriorResidualModel(nn.Module):
         self.register_buffer("u_mean_n", torch.zeros(()))
 
     def evidence(self, window, win_obs, win_pad, observed=None, valid=None) -> torch.Tensor:
-        """Encoder output, centred (see ModelConfig.center_u). In train mode the batch
-        mean over observed valid tokens is subtracted and the running mean updated; in
-        eval mode the running mean is subtracted. Norm is NOT re-normalised, so a
-        near-constant encoder is not amplified back to full scale."""
         u = self.encoder(window, win_obs, win_pad)
         if not self.cfg.center_u:
             return u
@@ -142,8 +111,6 @@ class PriorResidualModel(nn.Module):
 
     def gain_terms(self, batch: dict, log_p0: torch.Tensor, u: torch.Tensor,
                    gamma_override=None) -> dict:
-        """dI terms for a given evidence vector u (used by forward and by the NCE
-        training objective, which re-scores the same tokens under deranged evidence)."""
         observed, valid, tokens = batch["observed"], batch["valid"], batch["token_ids"]
         bu = self.tilt.bu(u)
         p = log_p0.exp()
@@ -174,10 +141,6 @@ class PriorResidualModel(nn.Module):
 
     def forward(self, batch: dict, log_p0: torch.Tensor,
                 gamma_override: Optional[str] = None) -> dict:
-        """batch: from data.collate. log_p0: (B,T,V) precomputed under the frozen prior.
-
-        gamma_override='zero' forces gamma == 0 for the structural null-invariance arm.
-        """
         window = batch["window"]              # (B,T,W,F)
         win_obs = batch["win_observed"]       # (B,T,W)
         win_pad = batch["win_pad"]            # (B,T,W)
