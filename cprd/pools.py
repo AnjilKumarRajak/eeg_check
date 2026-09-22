@@ -1,11 +1,4 @@
-"""Candidate pools for selection experiments, with the validity attack as a hard gate.
 
-A pool is only usable if a NO-BRAIN classifier cannot find the true sentence in it:
-text-only features (mean prior log-prob, length, type-token ratio) must score at or
-below chance + 2pp. Otherwise the pool — not the EEG — would carry the answer.
-
-Pools are deterministic given (seed, N) and hashed; the hash travels with every result.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -37,9 +30,7 @@ def mean_prior_logprob(prior, sent, device="cpu") -> float:
 def build_corpus_pools(sentences: list, N: int, seed: int,
                        length_tol: int = 2, prior=None,
                        logp_tol: float = 0.5, device="cpu") -> list[Pool]:
-    """One pool per unique TEXT: the true sentence + (N-1) length-matched distractors
-    drawn from OTHER texts. Prior-logprob matching applied when a prior is supplied.
-    """
+
     rng = np.random.default_rng(seed)
     by_text: dict = {}
     for s in sentences:
@@ -74,14 +65,6 @@ def build_corpus_pools(sentences: list, N: int, seed: int,
 
 def text_only_attack(pools: list[Pool], prior=None, device="cpu",
                      seed: int = 0) -> float:
-    """The pool-validity gate: can text features alone find the true sentence?
-
-    Tries a battery of no-brain decision rules and reports the accuracy of the BEST
-    one — a pool must survive the strongest cheap attack, not the average one:
-    argmax/argmin length, closest-to-median length, argmax type-token ratio, and
-    (when a prior is supplied) argmax/argmin mean prior log-prob. Anything materially
-    above 1/N invalidates the pool set.
-    """
     def lengths(p):
         return [float(_length(c)) for c in p.candidates]
 
