@@ -1,13 +1,4 @@
-#!/usr/bin/env python3
-"""E5 (Phase 3): attribute decoding with the mandatory gaze triplet.
 
-Every accuracy is reported three ways — gaze-only / EEG-only / EEG-residualized-on-gaze
-— and only the residualized row may carry a neural claim. Labels available without
-external files: corpus topic (SR movie reviews vs NR/TSR Wikipedia), the GLIM-style
-zero-shot axis. Sentiment/relation labels can be supplied as a JSON {text_hash: label}.
-
-Real-data driver (needs covariates.csv from e0). Functions are imported by tests.
-"""
 from __future__ import annotations
 
 import json
