@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Render all ICLR figures from gates + ledger.   python experiments/make_figures.py --runs-dir runs"""
 import argparse
 import os
 import sys
