@@ -1,22 +1,4 @@
-"""EEG evidence encoder f_phi, and the rank-budgeted tilt.
 
-Design choice: the 840-d word vector is not flat. It is 8 frequency bands x 105
-scalp channels, and the two axes mean different things -- channels carry spatial
-(topographic) structure, bands carry spectral structure with different physiological
-interpretations. A flat MLP over 840 dims discards that.
-
-So the encoder is explicitly factorised:
-
-    (840,) -> (8 bands, 105 channels)
-       -> per-band spatial projection        Linear(105 -> d_s), band-specific
-       -> band attention pooling             learned query over the 8 bands
-       -> temporal encoder over the window   small transformer over 2w+1 words
-       -> u_t in R^r,  ||u_t|| = s <= s_max
-
-Bounding ||u_t|| matters. ell(v) = <Omega_v, B u_t> scales with ||B|| * ||u||, so
-constraining B alone is vacuous -- the encoder simply grows ||u|| to compensate and any
-stated capacity budget becomes decorative. Both are constrained here.
-"""
 from __future__ import annotations
 
 import torch
@@ -29,13 +11,6 @@ FEAT_DIM = N_BANDS * N_CHANNELS          # 840
 
 
 class BandSpatialProjection(nn.Module):
-    """Per-band spatial projection over the 105 scalp channels.
-
-    Each band gets its own Linear(105 -> d_s): alpha and gamma topographies are not
-    the same map, so sharing one projection across bands would force them to be.
-    Implemented as one batched einsum rather than 8 separate Linears.
-    """
-
     def __init__(self, d_s: int = 64, dropout: float = 0.1):
         super().__init__()
         self.d_s = d_s
@@ -54,13 +29,6 @@ class BandSpatialProjection(nn.Module):
 
 
 class BandAttentionPool(nn.Module):
-    """Pool the 8 band representations with a learned query.
-
-    Attention rather than a fixed sum, so the model can express which bands carry
-    evidence; the learned weights are also a reportable diagnostic (which band matters)
-    without claiming any physiological localisation.
-    """
-
     def __init__(self, d_s: int):
         super().__init__()
         self.query = nn.Parameter(torch.randn(d_s) * 0.02)
@@ -77,8 +45,6 @@ class BandAttentionPool(nn.Module):
 
 
 class EvidenceEncoder(nn.Module):
-    """f_phi: (window of word-level EEG, missingness mask) -> u_t in R^r."""
-
     def __init__(self, r: int = 16, d_s: int = 64, d_model: int = 128,
                  n_heads: int = 4, n_layers: int = 2, dropout: float = 0.1,
                  s_max: float = 4.0):
@@ -100,11 +66,6 @@ class EvidenceEncoder(nn.Module):
 
     def forward(self, window: torch.Tensor, observed: torch.Tensor,
                 pad: torch.Tensor | None = None) -> torch.Tensor:
-        """window:   (B, W, 840) or (B, T, W, 840)
-        observed: same shape minus the feature axis, True where EEG is real
-        pad:      True where the window slot is off the end of the sentence
-        returns u_t with ||u_t|| == s, shape (B, r) or (B, T, r)
-        """
         squeeze_t = window.dim() == 3
         if squeeze_t:
             window, observed = window.unsqueeze(1), observed.unsqueeze(1)
@@ -147,14 +108,6 @@ class EvidenceEncoder(nn.Module):
 
 
 class GazeEncoder(nn.Module):
-    """f_phi for the GAZE evidence channel: (window of per-word gaze vectors) -> u_t.
-
-    Same contract as EvidenceEncoder (same temporal encoder, same bounded ||u_t||, same
-    masking rule: unobserved slots are padding, never an input flag) but the input is
-    the 6-d eye-movement record per word (build.GAZE_COLS) instead of 840 band powers.
-    This is the channel the EEG model must NOT see; it is measured here on its own so
-    the two channels can be compared under the identical estimator and nulls."""
-
     def __init__(self, g_dim: int = 6, r: int = 16, d_model: int = 128,
                  n_heads: int = 4, n_layers: int = 2, dropout: float = 0.1,
                  s_max: float = 4.0):
@@ -199,16 +152,6 @@ class GazeEncoder(nn.Module):
 
 
 class CombinedEncoder(nn.Module):
-    """f_phi for the COMBINED channel [eeg(840) | gaze(6)] -> u_t.
-
-    Two branches, fused at the evidence-vector level:
-      * the EEG branch is the unchanged EvidenceEncoder, and its slots are masked by the
-        gaze `fixated` column (col 840) exactly as the EEG-only run masks unfixated
-        words -- so the EEG branch here is the EEG-only model, no more, no less;
-      * the gaze branch is the unchanged GazeEncoder over the 6 gaze columns.
-    u_t = normalize(W [u_eeg ; u_gaze]) * s. The combined channel exists so that
-    I(text; EEG | gaze) can be read off as I(both) - I(gaze); it is never the headline."""
-
     def __init__(self, r: int = 16, d_s: int = 64, d_model: int = 128, n_heads: int = 4,
                  n_layers: int = 2, dropout: float = 0.1, s_max: float = 4.0,
                  g_dim: int = 6, eeg_dim: int = FEAT_DIM, fusion: str = "concat"):
@@ -264,18 +207,6 @@ class CombinedEncoder(nn.Module):
 
 
 class RankBudgetedTilt(nn.Module):
-    """ell_t(v) = <Omega_v, B u_t>, plus the evidence gain gamma_t.
-
-    B is constrained by its SPECTRAL norm (power iteration), not its Frobenius norm.
-    They are different quantities: Frobenius mass can concentrate on a single singular
-    direction, so a Frobenius bound does not bound the operator's gain.
-
-    gamma has NO lower clamp on the pre-activation. Clamping it (e.g. at -3) floors
-    gamma >= softplus(-3) ~ 0.049, which makes gamma = 0 unreachable by learning and so
-    makes null-invariance structurally impossible for a trained model -- the exact
-    property the objective exists to provide.
-    """
-
     def __init__(self, d_model: int, r: int, sigma_max: float = 1.0,
                  gamma_max: float = 5.0, gamma_mode: str = "learned"):
         super().__init__()
@@ -314,12 +245,6 @@ class RankBudgetedTilt(nn.Module):
 
     def gamma(self, prior_entropy: torch.Tensor, u: torch.Tensor,
               observed: torch.Tensor) -> torch.Tensor:
-        """gamma_t >= 0, hard-gated to exactly 0 where the word carried no EEG.
-
-        43.5% of ZuCo tokens are unfixated. Without this gate the encoder can read
-        "all zeros" as "skipped word => frequent, predictable word" and earn dI from
-        gaze behaviour rather than neural signal.
-        """
         if self.gamma_mode == "zero":
             g = torch.zeros_like(prior_entropy)
         elif self.gamma_mode == "constant":
