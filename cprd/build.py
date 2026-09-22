@@ -1,20 +1,4 @@
-"""Model-ready dataset builder: verified pickles -> HDF5 splits + manifests.
 
-Derivation, not re-preprocessing. Inputs are the four Table-2-verified pickles
-(~/datasets/ZuCo/<task>/pickle/). Outputs:
-
-    <out>/zuco2_train.h5, zuco2_val.h5, zuco2_test.h5     (same schema read_split expects,
-                                                           plus REAL subject_id/task attrs)
-    <out>/split_manifest.json                              (both split kinds, hashed)
-
-Two split kinds, both generated here so nothing ever touches the retired legacy files:
-    text     -- global unique-text split across ALL tasks (the honest one)
-    instance -- per-reading split (the literature's leaky convention, for dual-split rows)
-
-Tokenization: per-word with correct prefix spaces under a caller-supplied tokenizer
-(the prior's), each word's 840-d GD vector replicated across its subword tokens,
-unfixated words carried as NaN rows with observed=False (1:1 alignment preserved).
-"""
 from __future__ import annotations
 
 import hashlib
@@ -29,15 +13,6 @@ from .covariates import text_hash
 
 BANDS = ("_t1", "_t2", "_a1", "_a2", "_b1", "_b2", "_g1", "_g2")
 FEAT_DIM = 840
-
-# Gaze evidence: the eye-movement record per word, as a SEPARATE evidence channel.
-#   [fixated(0/1), log1p(nFixations), log1p(FFD), log1p(GD), log1p(TRT), log1p(GPT)]
-# nFixations comes from the pickle; the four durations come from the .mat covariate
-# table when it exists (e0 post-pass), else stay 0. Word length / pupil are NOT
-# included: word length is a property of the text (would leak identity), pupil is
-# sparse. Gaze is fully observed -- a skipped word is a real observation (nfix=0), so
-# `observed` is all-True under --evidence gaze. This channel is never fed to the EEG
-# model; it is measured on its own so the two can be compared under one estimator.
 GAZE_DIM = 6
 GAZE_COLS = ("fixated", "log1p_nfix", "log1p_ffd", "log1p_gd", "log1p_trt", "log1p_gpt")
 
@@ -65,11 +40,6 @@ def _word_feats(wobj) -> np.ndarray | None:
 def iter_readings(pickle_root: str, tasks):
     """Yield (subject, task, sent_idx, words_all, fixated_feats: {word_idx: (840,)})."""
     for task in tasks:
-        # Accept either the stock pickle or the *_wRaw one. The _wRaw build (used by
-        # the Amrani baseline) is a strict superset: same schema plus a per-word
-        # `rawEEG` key, so `word_level_EEG` -- all this function reads -- is identical.
-        # Preferring the stock name keeps existing runs bit-identical; falling back to
-        # _wRaw means ONE .mat download + ONE rebuild serves both baselines.
         cands = [os.path.join(pickle_root, task, "pickle", f"{task}-dataset.pickle"),
                  os.path.join(pickle_root, task, "pickle", f"{task}-dataset_wRaw.pickle")]
         p = next((c for c in cands if os.path.exists(c)), None)
@@ -100,10 +70,6 @@ def iter_readings(pickle_root: str, tasks):
 
 
 def tokenize_reading(words_all, feats, tokenizer, nfix=None):
-    """Per-word tokenization with prefix spaces; EEG replicated per subword; NaN rows
-    where unfixated. Returns (token_ids, eeg, observed, word_index, gaze) or None if
-    any word yields no tokens. `gaze` carries only the pickle-derived columns here
-    (fixated, log1p nfix); durations are filled by the e0 post-pass from the .mat."""
     ids, eeg, obs, widx, gaze = [], [], [], [], []
     nfix = nfix or {}
     for wi, word in enumerate(words_all):
@@ -209,9 +175,6 @@ def build(pickle_root: str, out_dir: str, tokenizer, tasks,
 
 
 def fill_gaze_durations(out_dir: str, covariates_csv: str, verbose: bool = True) -> dict:
-    """e0 post-pass: fill gaze columns 2..5 (FFD, GD, TRT, GPT; log1p, samples @500Hz)
-    from the .mat covariate table, joined on (subject, text_hash, word_idx). Words the
-    table lacks keep 0 in those columns. Returns per-split fill statistics."""
     from .covariates import CovariateTable
     cov = CovariateTable.load(covariates_csv)
     stats = {}
