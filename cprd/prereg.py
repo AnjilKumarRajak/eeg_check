@@ -1,10 +1,4 @@
-"""Pre-registration: freeze hypotheses, hashes and the matched-N prediction BEFORE
-test-set contact; guard test-set access through a logging wrapper.
 
-The prereg document's SHA-256 prints in every table. The deviations log is
-append-only. Test-split reads outside the wrapper are a protocol violation by
-construction (the experiment drivers only receive the wrapped loader).
-"""
 from __future__ import annotations
 
 import hashlib
@@ -41,12 +35,6 @@ HYPOTHESES = [
 
 
 def write_prereg(out_dir: str, frozen: dict) -> str:
-    """Write prereg.json + prereg.md; return the SHA-256 (short) of the json.
-
-    `frozen` must include: config_sha, split_fingerprints, prior_ids, pool_hashes,
-    matched_N_prediction, code_rev, seeds, n_perm, n_boot. Missing keys are an error —
-    an incomplete prereg is worse than none.
-    """
     required = ["config_sha", "split_fingerprints", "prior_ids", "matched_N_prediction",
                 "code_rev", "seeds", "n_perm", "n_boot"]
     missing = [k for k in required if k not in frozen]
@@ -150,13 +138,6 @@ def write_gate_artifact(runs_dir: str, gate_name: str, passed: bool, detail: dic
 
 
 def collect_green_gates(runs_dir: str) -> list:
-    """Derive the gates_passed list from what is ACTUALLY on disk — never hardcode.
-
-    Labels: '<name>' for a clean pass, '<name>_OVERRIDDEN' when the artifact carries
-    an override marker, '<name>_partial' when the gate passed with a recorded partial
-    validity range (E1's validated_range mechanism). Ledger consumers therefore see
-    exactly what kind of green light each stage had.
-    """
     out = []
     if not os.path.isdir(runs_dir):
         return out
@@ -182,14 +163,6 @@ def collect_green_gates(runs_dir: str) -> list:
 
 
 def apply_gate_override(runs_dir: str, gate_name: str, reason: str) -> str:
-    """The SANCTIONED way to unblock a failed gate — never edit the JSON by hand.
-
-    Rewrites gate_<name>.json with passed=true and an explicit override block that
-    preserves the original artifact verbatim under detail.original, and appends the
-    reason to the prereg deviations log. check_gate_artifact prints a loud warning on
-    overridden gates, and collect_green_gates labels downstream records
-    '<name>_OVERRIDDEN' so no reader can mistake the run for a clean pass.
-    """
     path = os.path.join(runs_dir, f"gate_{gate_name}.json")
     if not os.path.exists(path):
         raise FileNotFoundError(f"no gate to override at {path}")
