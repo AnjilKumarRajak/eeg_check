@@ -1,33 +1,4 @@
-#!/usr/bin/env python3
-"""E6: the trained seq2seq comparability baselines (three-arm, variant-tagged).
 
-Variants (all trained on OUR leakage-free preprocessing — that is the point):
-
-  --their-code                 the base paper's VERBATIM BrainTranslator class
-                               (cprd/wangji_official.py, ported unchanged from their
-                               repo) — the 1:1 architecture row
-  --faithful                   our reimplementation of the same front end (kept for
-                               cross-checking the port; architecturally identical)
-  (neither)                    the modernized 2-layer variant
-
-  --their-recipe               their VERBATIM two-step training recipe
-                               (train_decoding.py): step 1 = freeze most of BART
-                               (except shared embeddings / embed_positions / encoder
-                               layer 0), SGD lr 5e-5 momentum 0.9, StepLR(20, 0.1),
-                               20 epochs; step 2 = unfreeze all, SGD lr 5e-7,
-                               StepLR(30, 0.1), 30 epochs; best-on-dev-CE selection,
-                               no grad clipping
-  (without it)                 single-stage AdamW at --lr (modern recipe)
-
-Every training case checkpoints per epoch to ckpt_e6/state_<variant>.pt (model,
-optimizer, scheduler, best-on-dev state) and auto-resumes from it, so an interruption
-loses at most one epoch. Three-arm evaluation (real / shuffled / noise) goes through
-the identical generate() path so every BLEU carries an ablated floor.
-
-    python experiments/e6_seq2seq_baseline.py --data-dir runs/data --backbone facebook/bart-large
-    (1:1 row)  --their-code --their-recipe --batch-size 32
-    (smoke)    --smoke [--their-code --their-recipe --epochs-step1 1 --epochs-step2 1]
-"""
 from __future__ import annotations
 
 import json
@@ -60,10 +31,6 @@ class _SmokeTok:
 
 
 class WangJiOfficial(nn.Module):
-    """The base paper's verbatim BrainTranslator, adapted to e6's (eeg, obs, labels)
-    batch interface. The inner module is their code unchanged; this wrapper only maps
-    our batch layout onto their (embeddings, mask, inverted mask, labels) signature
-    and cleans NaNs (a preprocessing concern — ours by design)."""
 
     def __init__(self, backbone, d_dec: int):
         super().__init__()
@@ -78,8 +45,6 @@ class WangJiOfficial(nn.Module):
 
     @torch.no_grad()
     def generate(self, eeg, obs, **kw):
-        # their generate() forwards `labels` into HF generate(), which newer
-        # transformers versions reject; this is the identical computation without it
         enc = self.inner.addin_forward(torch.nan_to_num(eeg, nan=0.0), ~obs)
         return self.inner.pretrained.generate(inputs_embeds=enc,
                                               attention_mask=obs.long(), **kw)
@@ -87,10 +52,6 @@ class WangJiOfficial(nn.Module):
 
 class Seq2SeqBaseline(nn.Module):
     def __init__(self, backbone, d_dec: int, faithful: bool = False):
-        """faithful=True reproduces Wang & Ji's BrainTranslator front end
-        (6 layers, nhead=8, d_model=840, ff=2048) -> Linear -> ReLU; kept as a
-        cross-check of the verbatim port. faithful=False is the modernized 2-layer
-        variant."""
         super().__init__()
         n_layers = 6 if faithful else 2
         self.frontend = nn.TransformerEncoder(
@@ -161,11 +122,6 @@ STAGE_ORDER = ["step1", "step2", "single"]
 
 def train_stage(model, tr_rows, va_rows, opt, sched, n_epochs, stage, state_path,
                 state, args, device, tok, clip: bool):
-    """Per-epoch resumable trainer for one training stage of one variant.
-
-    Saves {stage, epoch, model, opt, sched, best_loss, best_state} after EVERY epoch;
-    on restart with a matching stage in the state file it continues at epoch+1, so an
-    interruption loses at most one epoch. Returns (best_loss, best_state)."""
     start = 0
     best_loss = float("inf")
     best_state = None
