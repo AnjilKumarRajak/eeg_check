@@ -1,24 +1,4 @@
-"""Prior-residual sequential decoding, with the ablated floor that makes BLEU meaningful.
 
-At each step the prior over the next token is tilted by the EEG evidence and the tilted
-distribution is searched:
-
-    log p_phi(v | e_t, w_hat_<t) = log p0(v | w_hat_<t) + gamma_t ell_t(v) - log Z_t
-
-log Z_t is a per-step constant, so it does not change the argmax and can be dropped for
-GREEDY decoding -- but it is beam-dependent and must NOT be dropped when ranking beams
-against one another, because different beams have different prefixes and therefore
-different log Z_t. It is retained here in both paths.
-
-Two labels travel with every result and are never dropped:
-
-    teacher_forced  -- whether the context was gold or the model's own history
-    oracle_length   -- whether generation length came from the reference
-
-`oracle_length=True` is a length leak: the reference tells the decoder when to stop,
-which also defeats BLEU's brevity penalty. It is allowed for diagnostics only, and no
-such number may be compared with a published BLEU.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -48,13 +28,6 @@ class DecodeResult:
 def greedy_prior_residual(model, prior, window, win_obs, win_pad, observed,
                           max_steps: int, eos_id: int, bos_id: int,
                           gamma_zero: bool = False) -> list[int]:
-    """Sequential Bayesian update with the model's OWN decoding history.
-
-    The EEG index advances with the generated position. That correspondence is only
-    strictly valid under teacher forcing -- once the prefix diverges from the reference,
-    EEG step t no longer describes the word actually being generated. This is an
-    acknowledged approximation of free-running decoding, not a silent one.
-    """
     device = window.device
     gen = [bos_id]
     for t in range(max_steps):
@@ -86,13 +59,6 @@ def decode_split(model, prior, batches, tokenizer, arm: str = "real",
                  oracle_length: bool = False, max_len: int = 64,
                  config_hash: str = "", checkpoint: str = "",
                  null_seed: int = 0) -> DecodeResult:
-    """Decode a whole split under one arm.
-
-    Arms use an IDENTICAL loop, length policy and metric so their BLEU is comparable:
-      real        -- real EEG
-      shuffled    -- EEG from a length-matched different sentence (cross-sentence null)
-      gamma_zero  -- prior only; the floor any EEG claim must beat
-    """
     from .nulls import apply_sentence_null
 
     model.eval()
@@ -131,13 +97,7 @@ def decode_split(model, prior, batches, tokenizer, arm: str = "real",
 
 
 def corpus_bleu(hyps: list[str], refs: list[str]) -> Optional[float]:
-    """Corpus-level BLEU on detokenized word-level text, via sacrebleu.
 
-    Corpus level, not sentence-averaged, and over words rather than BPE pieces --
-    scoring BPE where hypothesis and reference both start with a special token grants a
-    free unigram match on every sentence. Returns None if sacrebleu is unavailable
-    rather than silently substituting a hand-rolled approximation.
-    """
     try:
         import sacrebleu
     except ImportError:
