@@ -1,11 +1,4 @@
-#!/usr/bin/env bash
-# Additional analyses whose numbers are quoted in the paper but are not produced by
-# run_v2.sh / run_v2_followup.sh: the per-subgroup (task/subject) breakdown, the
-# instance-level split leakage ablation, leave-one-subject-out generalization, the
-# structure-only gaze control, the four-way task/session attribute probe, the
-# generation-baseline reproduction, and the low-bit calibration sweep. Run after
-# run_v2.sh (needs runs/data and runs_v2/gate_estimator.json).
-# Usage: bash run_additional_analyses.sh [breakdown|leakage|loso|struct|attributes|baselines|lowbit|all]
+
 set -uo pipefail; cd "$(dirname "$0")"
 export HF_HUB_DISABLE_PROGRESS_BARS=1 NLTK_DATA=$HOME/nltk_data PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 V=$HOME/venvs/cprd/bin/python; PRIOR="--prior causal_lm --prior-model gpt2-large"
