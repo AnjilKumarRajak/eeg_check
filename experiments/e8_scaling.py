@@ -1,9 +1,4 @@
-#!/usr/bin/env python3
-"""E8: scaling curve — realized bits and selection accuracy vs training-data fraction.
 
-COFETT's third evidence criterion: predictable improvement with data. Fractions
-subsample TRAIN by unique text (fixed seed); dev/val untouched; test never touched.
-"""
 from __future__ import annotations
 
 import json
