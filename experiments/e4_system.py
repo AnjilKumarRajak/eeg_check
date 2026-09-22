@@ -1,19 +1,4 @@
-#!/usr/bin/env python3
-"""E4 (Phases 5-6): freeze the prereg, then the ONE guarded test-split session —
-matched-N selection with ALL control arms, ITR, abstention, paper metrics, figures data.
 
-Post-audit changes:
-  * everything test-derived (selected texts, paper metrics) is produced INSIDE the
-    guarded session — no post-hoc unlogged access can ever be needed again
-  * full H5 arm battery: zeroed, gamma_zero, derangement, gaussian_matched,
-    amplitude_only, position_only — each with a TOST equivalence verdict vs chance
-  * real plogp (mean prior log-prob of each candidate) for abstention covariates and
-    the cheap-confidence baseline; gaze covariates joined when covariates.csv exists
-  * attribute-fused verifier optional (--attr-beta from e3's val tuning; 0 = ablation)
-  * paper metrics (BLEU/chrF/TER/METEOR/BERTScore/ROUGE/WER/CER) on real+zeroed+gamma0
-    selected text -> e4_paper_metrics.json (fig8) ; risk-coverage -> e4_risk_coverage.json
-  * gates_passed derived from disk (overrides show as *_OVERRIDDEN)
-"""
 from __future__ import annotations
 
 import csv
@@ -47,7 +32,6 @@ LN2 = math.log(2.0)
 
 
 def transformed_lookup(lookup: dict, kind: str, seed: int = 0) -> dict:
-    """Build a control-arm EEG lookup from the real one. Missingness masks preserved."""
     rng = np.random.default_rng(seed)
     texts = list(lookup.keys())
     if kind == "zeroed":
@@ -102,8 +86,6 @@ def main():
     args = ap.parse_args()
     apply_determinism(args)
     check_gate_artifact(args.runs_dir, "build")
-    # the estimator gate is a LABEL here (as in E2), not a hard requirement: records
-    # carry 'estimator' only if it is green (collect_green_gates)
     read_gate_optional(args.runs_dir, "estimator")
     gate_ch = check_gate_artifact(args.runs_dir, "channel")
     gate_sel = check_gate_artifact(args.runs_dir, "selection")
@@ -111,9 +93,6 @@ def main():
     bits_sent = float(gate_ch["detail"]["bits_per_sentence"])
     bits_sel_val = gate_sel["detail"].get("bits_realized_val")   # honest predictor if present
     n_star_meets = gate_sel["detail"].get("matched_N_meets_target")
-
-    # Additional-seed replications must never overwrite the primary (seed 0) run's gate,
-    # outputs or pre-registration: they get their own suffix and prereg sub-directory.
     sfx = "" if args.seed == 0 else f"_seed{args.seed}"
 
     # ---- freeze prereg BEFORE test access ---------------------------------
@@ -202,10 +181,6 @@ def main():
         hits, per_pool, choices = 0, [], []
         for p_ in pools:
             if arm == "gamma_zero":
-                # Run the REAL model with the gain gate forced to 0. Every candidate's
-                # score is then exactly 0 (gamma*ell - log Z, Z=1), so the choice is a
-                # uniform tie-break. We assert the tie instead of assuming it: this is
-                # the production zero anchor, checked on the test pools themselves.
                 s = score_pool_with(look, p_, gamma_override=0.0)
                 zero_anchor_spread = max(zero_anchor_spread, float(np.ptp(s)))
             else:
@@ -239,9 +214,6 @@ def main():
           flush=True)
 
     realized = arm_results["real"]["bits"]
-    # H2 as pre-registered: the prediction comes from the E2 channel measurement
-    # (val-split dI_hat x tokens). The realized-val-selection number is ledgered for
-    # the figure but is NOT the predictor -- using it would make H2 circular.
     predictor = bits_sent
     ratio = realized / predictor if predictor > 0 else float("inf")
     matched = predictor > 0 and (1 / 1.5) <= max(ratio, 1e-9) <= 1.5
@@ -304,12 +276,6 @@ def main():
                    "risks_cheap": rc_cheap.risks.tolist(),
                    "aurc_cheap": rc_cheap.aurc}, fh, indent=2)
 
-    # ---- selected texts + paper metrics (INSIDE the guarded session) --------
-    # Text metrics are computed on the SELECTED candidate text, using exactly the
-    # choices that produced the accuracy table above (no second scoring pass, no
-    # separate random draw). They are therefore a function of selection accuracy --
-    # at N=2, BLEU-4 ~= 100 x accuracy -- and are reported as comparability rows only.
-    # They are NOT generation metrics and must never be described as such.
     refs = [p_.candidates[p_.true_idx].text for p_ in pools]
     def texts_from_choices(choices):
         return [p_.candidates[c].text for p_, c in zip(pools, choices)]
