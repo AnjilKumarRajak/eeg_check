@@ -1,17 +1,4 @@
-"""Error analysis for the selection system: WHAT fails, not just how often.
 
-Consumes e4_selected_texts.csv + the pools' scores (written by e4) and produces:
-
-  e4_error_analysis.json    per-bucket accuracies and the failure taxonomy
-  fig9_error_analysis       four-panel figure: correctness vs sentence length,
-                            vs prior log-prob, margin distributions (correct vs wrong),
-                            and near-miss semantic similarity of the errors
-
-Failure taxonomy (per wrong selection):
-  near_miss     chosen candidate shares >= 40% content words with the reference
-  same_topic    chosen candidate has the same task/corpus label as the reference
-  off_target    neither — the informative failure class
-"""
 from __future__ import annotations
 
 import csv
