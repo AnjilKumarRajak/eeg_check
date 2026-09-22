@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
-# v2 instrument (2026-09-17, docs/FINDINGS_20260917.md §5): InfoNCE estimand + objective,
-# nonlinear rank-16 tilt over the prior embedding, prior-matched E1 with the lower-bound
-# gate. Same data build (runs/data), own runs dirs (runs_v2*), no baselines.
+
 set -uo pipefail; cd "$(dirname "$0")"
 export HF_HUB_DISABLE_PROGRESS_BARS=1 NLTK_DATA=$HOME/nltk_data PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 V=$HOME/venvs/cprd/bin/python; PRIOR="--prior causal_lm --prior-model gpt2-large"
