@@ -1,21 +1,4 @@
-"""Null conditions for the bias-corrected estimator dI_hat = dI(real) - dI(null).
 
-Two independent nulls are always reported. A claim that survives both is real; one that
-survives only the across-sentence null is a length or amplitude artifact.
-
-Design rules that matter, each fixing a way the null can be silently biased:
-
-* Only EEG moves. Tokens, masks and lengths stay with their own sentence. Permuting the
-  pad mask alongside the EEG normalises each sentence by a *different* sentence's length
-  and lets padding positions be scored.
-* Donors are WRAPPED, never zero-padded. Zero-padding a short donor injects zero-EEG
-  positions, which score dI ~ 0, which deflates the null arm and therefore INFLATES
-  dI_hat -- a bias in the bias-corrector.
-* Permutations are DERANGEMENTS. A plain permutation has one fixed point on average, so
-  ~1/B sentences keep their own EEG in every null draw.
-* Length stratification. Pairing a 5-token sentence's EEG with a 60-token sentence
-  confounds the null with length.
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -59,19 +42,6 @@ def length_stratified_derangement(lengths: np.ndarray, rng: np.random.Generator,
 
 
 def _observed_row_index(win_obs: torch.Tensor, valid: torch.Tensor, i: int) -> torch.Tensor:
-    """Indices of sentence i's rows whose CENTRE EEG row is observed (real EEG), in
-    order. Falls back to all valid rows if the sentence has no observed row at all.
-
-    2026-08-17 fix (estimator calibration): the cross-sentence and temporal-roll nulls
-    previously wrapped over ALL donor rows, including missing (all-NaN -> zero) ones. The
-    model's gamma gate and the dI average both key on the RECIPIENT's `observed`, so under
-    a null an "observed" token could receive an EMPTY window -- something that never
-    happens under real data. That is a real-vs-null distribution shift: it biases the null
-    mean toward zero (miscalibrated p-values, bimodal at b=0) and hands training a
-    shortcut ("empty window => push down") that raises the contrast margin without
-    decoding the EEG. Nulls now draw from observed rows only, so every observed token
-    carries a real EEG row under the null exactly as under real.
-    """
     L = int(valid[i].sum())
     W = win_obs.shape[-1]
     centre = win_obs[i, :L, W // 2]
@@ -83,10 +53,6 @@ def _observed_row_index(win_obs: torch.Tensor, valid: torch.Tensor, i: int) -> t
 
 def apply_sentence_null(window: torch.Tensor, win_obs: torch.Tensor,
                         valid: torch.Tensor, seed: int, bucket: int = 2):
-    """Cross-sentence null: EEG from a length-matched different sentence, wrapped.
-
-    window (B,T,W,F), win_obs (B,T,W), valid (B,T). Returns permuted (window, win_obs).
-    """
     B, T, W, F = window.shape
     rng = np.random.default_rng(seed)
     lengths = valid.sum(dim=1).cpu().numpy()
@@ -108,11 +74,6 @@ def apply_sentence_null(window: torch.Tensor, win_obs: torch.Tensor,
 
 def apply_temporal_roll_null(window: torch.Tensor, win_obs: torch.Tensor,
                              valid: torch.Tensor, seed: int):
-    """Within-sentence null: roll EEG by a random non-zero offset.
-
-    Preserves sentence length and per-sentence EEG marginals EXACTLY, destroying only
-    the token-EEG correspondence. The most conservative of the two nulls.
-    """
     B, T, W, F = window.shape
     rng = np.random.default_rng(seed)
     out_w = window.clone()
@@ -138,13 +99,6 @@ def apply_gaussian_null(window: torch.Tensor, win_obs: torch.Tensor,
                         valid: torch.Tensor, seed: int,
                         channel_mean: torch.Tensor | None = None,
                         channel_std: torch.Tensor | None = None):
-    """Noise matched to the real PER-FEATURE mean and std, never a global scalar.
-
-    Real band-power features have wildly heterogeneous per-channel scales and non-zero
-    means; an isotropic surrogate is a much easier null than the real distribution and
-    silently deflates the null arm. The fallback therefore computes per-feature moments
-    over observed positions.
-    """
     g = torch.Generator(device="cpu").manual_seed(seed)
     noise = torch.randn(window.shape, generator=g).to(window.device)
     if channel_mean is None or channel_std is None:
@@ -163,22 +117,13 @@ def apply_gaussian_null(window: torch.Tensor, win_obs: torch.Tensor,
 
 def apply_zeroed_null(window: torch.Tensor, win_obs: torch.Tensor,
                       valid: torch.Tensor, seed: int):
-    """Zeroed-input blind control — the arm that exposed the fMRI state of the art
-    (arXiv 2607.12079: zeroed input gave statistically identical results).
 
-    Missingness masks are PRESERVED: missingness itself is gaze information, and the
-    control must remove only the signal values, not the availability pattern.
-    """
     return torch.zeros_like(window), win_obs.clone()
 
 
 def apply_amplitude_only_null(window: torch.Tensor, win_obs: torch.Tensor,
                               valid: torch.Tensor, seed: int):
-    """Per-sentence mean EEG broadcast to every position.
 
-    Catches models that read sentence-level amplitude/offset rather than per-word
-    content — such a model scores identically here and on real EEG.
-    """
     B, T, W, F = window.shape
     out = torch.zeros_like(window)
     for i in range(B):
@@ -193,12 +138,7 @@ def apply_amplitude_only_null(window: torch.Tensor, win_obs: torch.Tensor,
 
 def apply_position_only_null(window: torch.Tensor, win_obs: torch.Tensor,
                              valid: torch.Tensor, seed: int):
-    """Features that are a deterministic function of token position only.
 
-    Catches structural/length shortcuts (the mechanism that let noise reach 66% R@1
-    in MEG retrieval under variable-duration windows): any model scoring above chance
-    here is reading sentence structure, not brain signal.
-    """
     B, T, W, F = window.shape
     pos = torch.arange(T, dtype=window.dtype, device=window.device)
     enc = torch.zeros(T, F, dtype=window.dtype, device=window.device)
@@ -212,18 +152,6 @@ def apply_position_only_null(window: torch.Tensor, win_obs: torch.Tensor,
 
 def text_cluster_derangement(texts: list, lengths: np.ndarray,
                              rng: np.random.Generator, bucket: int = 2) -> np.ndarray:
-    """Donor index per sentence such that donor TEXT != recipient TEXT.
-
-    The plain sentence derangement can hand a sentence the EEG of another *reading of
-    the same text* (each test text is read by up to ~24 subjects), which is not a null
-    for content. Buckets by length as usual, then repairs every same-text assignment
-    by swapping donors with another recipient (same length preferred) such that both
-    recipients end up with a different-text donor. Swaps keep `donor` a permutation.
-
-    2026-09 fix: the previous repair scanned all n recipients per violation (O(n^2)
-    per draw, infeasible at 10k permutations) and could leave violations in place.
-    Rejection sampling is O(1) expected per violation.
-    """
     n = len(texts)
     donor = length_stratified_derangement(lengths, rng, bucket)
     if n < 2:
