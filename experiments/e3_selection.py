@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""E3 (Phase 4): selection over validated pools + the matched-N prediction.
-Needs gate_channel. Writes gate_selection and the frozen matched-N prediction.
 
-Runs on the VALIDATION split (the test-split one-shot at N* happens in e4 behind the
-prereg wrapper). Arms: real / gamma_zero / zeroed / text-cluster derangement.
-"""
 from __future__ import annotations
 
 import json
@@ -48,8 +42,6 @@ def main():
 
     led = ledger_for(args)
     sweep, pools_ok = [], True
-    # the no-brain attack includes the prior log-prob rules whenever a real prior is
-    # used, and a rebuilt pool set is built the SAME way (log-prob matched) as the first
     attack_prior = prior if args.prior != "tiny" else None
     for N in n_grid:
         pools = build_corpus_pools(va, N=N, seed=args.seed, prior=attack_prior,
@@ -106,12 +98,6 @@ def main():
     import numpy as _np
     bits_realized_val = float(_np.median(
         [row["real"]["bits"] for row in sweep if "real" in row])) if sweep else 0.0
-    # matched-N prediction from the HONEST quantity: realized selection bits on val
-    # (the dI x tokens product was falsified by the first run's own matched-N test)
-    # The matched-N prediction MUST come from the E2 channel measurement, never from
-    # realized validation selection: predicting N* from val selection and then testing
-    # test selection is circular and (Sept audit) collapses N* to 2 whenever the
-    # channel reads ~0. bits_realized_val is still ledgered for the figure.
     n_star = predict_n_star(bits_sent)
     n_star_ok = n_star_meets_target(bits_sent, n_star)
     if not n_star_ok:
