@@ -1,15 +1,4 @@
-"""Paper-grade text metrics, computed identically on every arm.
 
-Families (7): BLEU-1..4 (sacrebleu, corpus), chrF, TER, METEOR (nltk), BERTScore-F1,
-ROUGE-1/2/L-F, WER/CER (jiwer). Every metric ships with its own collapse floor because
-the harness runs it on real/zeroed/gamma_zero arms alike — a metric without its floor
-is not reportable.
-
-Robustness contract: each metric is computed in its own try/except; unavailable
-backends yield None (recorded as such), never a crash and never a silent hand-rolled
-substitute. `light=True` (smoke/CPU) skips the heavy model-based metrics (BERTScore,
-METEOR's wordnet path) so the pipeline stays runnable anywhere.
-"""
 from __future__ import annotations
 
 import os
@@ -48,7 +37,6 @@ def _rouge(hyps, refs):
 def _meteor(hyps, refs):
     import nltk
     from nltk.translate.meteor_score import meteor_score
-    # wordnet is fetched in run_pipeline setup; this fallback keeps headless boxes alive
     try:
         nltk.data.find("corpora/wordnet")
     except LookupError:
@@ -92,7 +80,6 @@ def compute_all(hyps: list, refs: list, light: bool = False,
                 out[f"{name}_unavailable"] = r["_error"]
             else:
                 out.update(r or {})
-    # collapse nested error dicts into flags
     clean = {}
     for k, v in out.items():
         if isinstance(v, dict) and "_error" in v:
