@@ -1,11 +1,4 @@
-"""Selective prediction for the selection system: risk-coverage, AURC, calibration.
 
-Confidence = top-1 minus top-2 verifier score margin (pre-registered functional).
-Every abstention claim must (a) dominate a CHEAP-CONFIDENCE baseline built only from
-length + prior log-prob — otherwise it is length-aware abstention, not evidence-aware —
-and (b) survive covariate partialling (partial AUC excluding 0.5).
-Clustering: coverage points are computed at the unique-text level.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,12 +22,6 @@ class RiskCoverage:
 def risk_coverage(correct: np.ndarray, confidence: np.ndarray,
                   clusters: np.ndarray | None = None,
                   grid: np.ndarray | None = None) -> RiskCoverage:
-    """Risk (error rate) among the most-confident fraction, swept over coverage.
-
-    With clusters given, first aggregate to cluster level (mean correctness, mean
-    confidence per unique text) so the curve's resolution is honest (79 texts, not
-    931 sentence-instances).
-    """
     correct = np.asarray(correct, dtype=np.float64)
     confidence = np.asarray(confidence, dtype=np.float64)
     if clusters is not None:
@@ -74,11 +61,6 @@ def confidence_auc(correct: np.ndarray, confidence: np.ndarray) -> float:
 
 def partial_confidence_auc(correct: np.ndarray, confidence: np.ndarray,
                            covariates: np.ndarray) -> float:
-    """AUC after residualizing confidence on covariates (length, prior logp, ...).
-
-    The gate for 'knows when it doesn't know': this must exclude 0.5, else the
-    confidence signal is the covariates wearing a costume.
-    """
     X = np.asarray(covariates, dtype=np.float64)
     if X.ndim == 1:
         X = X[:, None]
@@ -93,13 +75,11 @@ def partial_confidence_auc(correct: np.ndarray, confidence: np.ndarray,
 
 
 def cheap_confidence(lengths: np.ndarray, prior_logp: np.ndarray) -> np.ndarray:
-    """The baseline every abstention claim must dominate: no brain input at all."""
     z = lambda v: (v - np.nanmean(v)) / (np.nanstd(v) + 1e-9)
     return z(prior_logp) - 0.5 * z(lengths)
 
 
 def ece(correct: np.ndarray, confidence: np.ndarray, n_bins: int = 10) -> float:
-    """Expected calibration error with equal-mass bins on a [0,1]-squashed confidence."""
     conf = np.asarray(confidence, dtype=np.float64)
     conf = 1.0 / (1.0 + np.exp(-(conf - np.nanmean(conf)) / (np.nanstd(conf) + 1e-9)))
     order = np.argsort(conf)
