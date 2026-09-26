@@ -1,18 +1,4 @@
-#!/usr/bin/env bash
-# Reproduces every COFETT number in the paper (Section 4.5 and the appendix "External Check on COFETT").
-# The framework code (cprd/, experiments/) is the SAME code used for ZuCo; only the data adapter
-# (extract_features.py, e0_build_cofett.py) and the frozen prior (Qwen2.5-0.5B) differ.
-#
-#   bash cofett/run_cofett.sh <RAW_DIR> <WORK_DIR>
-#
-#   RAW_DIR   OpenNeuro ds006317 recordings (bash cofett/download_cofett.sh <RAW_DIR>)
-#   WORK_DIR  output folder: features, built datasets (HDF5), run folders with gate/ledger files
-#
-# Environment (optional): PYTHON (default python), DEVICE (default cuda),
-#   PRIOR_MODEL (default Qwen/Qwen2.5-0.5B),
-#   E1_GATE: the estimator-calibration gate written by E1 of the ZuCo campaign (run_v2.sh),
-#            default ./runs_v2/gate_estimator.json. COFETT reuses the E1-calibrated instrument.
-# Every step is idempotent: a stage is skipped if its gate file already exists.
+
 set -u
 RAW=${1:?usage: run_cofett.sh <RAW_DIR> <WORK_DIR>}; W=${2:?usage: run_cofett.sh <RAW_DIR> <WORK_DIR>}
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"
@@ -22,9 +8,6 @@ E1_GATE=${E1_GATE:-$REPO/runs_v2/gate_estimator.json}
 export HF_HUB_DISABLE_PROGRESS_BARS=1 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false PYTHONUTF8=1
 mkdir -p "$W/feat" "$W/feat_ses234" "$W/logs"; LOG="$W/logs"
 
-# ---------------------------------------------------------------- 1. per-character 840-d features (CPU)
-# session 1 -> feat/, sessions 2-4 -> feat_ses234/ (the folder layout of the original run; it fixes the
-# order in which readings are written, so the built HDF5 files are identical to the published ones)
 for edf in $(find "$RAW" -name "*_eeg.edf" | sort); do
   n=$(basename "$edf" _eeg.edf); case $n in *_ses-01_*) O="$W/feat";; *) O="$W/feat_ses234";; esac
   [ -f "$O/$n.npz" ] || $PY "$HERE/extract_features.py" --edf "$edf" --events "${edf%_eeg.edf}_events.tsv" \
@@ -32,8 +15,6 @@ for edf in $(find "$RAW" -name "*_eeg.edf" | sort); do
 done
 F1="$W/feat"; F16="$W/feat,$W/feat_ses234"   # session 1 only / all four sessions
 
-# ---------------------------------------------------------------- 2. build datasets (HDF5, cprd schema)
-build () {  # $1 = name, then e0_build_cofett.py arguments
   local name=$1; shift; local R="$W/runs_$name"; mkdir -p "$R"
   [ -f "$R/gate_build.json" ] || $PY "$HERE/e0_build_cofett.py" --prior-model "$PM" --out "$W/data_built_$name" \
       --runs-dir "$R" "$@" > "$LOG/build_$name.log" 2>&1
@@ -49,8 +30,6 @@ for PH in reading recall; do
 done
 for A in 1.0 0.3 0.1; do build spike_a$A --feat-dir "$F1" --phase reading --spike-alpha $A; done  # injected controls
 
-# ---------------------------------------------------------------- 3. measurement (same instrument as ZuCo)
-# the hub checkpoint is bfloat16; the paper's runs use a float32 copy of the same weights
 PRIOR_FP32=${PRIOR_FP32:-$W/prior_qwen25_05b_fp32}
 [ -f "$PRIOR_FP32/config.json" ] || $PY "$HERE/make_fp32_prior.py" "$PRIOR_FP32" --model "$PM"
 cd "$REPO"
