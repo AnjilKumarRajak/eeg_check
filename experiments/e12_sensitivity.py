@@ -1,16 +1,4 @@
-#!/usr/bin/env python3
-"""E12: evaluation-time sensitivity of the channel bound (eval only; no new training, no test access).
 
-Re-scores the trained E2 checkpoint on the measurement half under (i) different evaluation gains
-gamma_eval (the trained checkpoint is evaluated with a FIXED gain; the default is softplus(c)=0.127
-because the gate parameters are never trained), (ii) rescaled evidence norm ||u_t||, and reports for
-each setting: the per-token InfoNCE bound (+ text-clustered CI, exact permutation p), the bound as a
-function of the number of negatives M' <= M (tightness/ceiling), and the SENTENCE-LEVEL InfoNCE
-bound, whose score is S(y) = sum_t T_t (a proper conditional density ratio q(w|e)/p0(w)), with the
-same M negatives -> a consolidated bits/sentence lower bound (<= log2(M+1)).
-
-    python experiments/e12_sensitivity.py <E2 args...> --m-draws 300 --gamma-grid 0.5,1,2 --uscale-grid 0.5,2
-"""
 from __future__ import annotations
 
 import json
