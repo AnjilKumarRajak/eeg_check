@@ -1,22 +1,4 @@
-#!/usr/bin/env python3
-"""COFETT (OpenNeuro ds006317) run -> per-character 8-band EEG power, ZuCo-style.
 
-Per trial the events carry three triggers (parallel-port code + 65279):
-    65329 (50)  reading onset  : characters highlighted one at a time, 0.4 s each,
-                                 punctuation skipped without consuming time
-    65379 (100) recall onset   : silent verbatim recall, nominal 0.4*(n+1) s
-    65381 (102) rest
-Sentences are presented in xlsx list order (verified: character counts match the
-inter-trigger intervals on every run). Features mirror cprd/build.py: 8 bands
-(theta1..gamma2, ZuCo definitions) x 105 channels = 840-d, mean Hilbert power
-over each character's window, log-transformed. The 105 channels are the 124 EEG
-channels minus the 19 most peripheral (ring '9'/'10' sites), fixed list written
-to the output so every run uses the same set.
-
-Output <out>/<run>.npz : feats_read (n_trials, max_chars, 840) NaN-padded,
-                         feats_recall (same, nominal uniform alignment),
-                         n_chars, sentences (unicode), keep_chars (mask), channels
-"""
 from __future__ import annotations
 import argparse, json, os, string, sys
 import numpy as np
