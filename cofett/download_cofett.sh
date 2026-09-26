@@ -1,8 +1,4 @@
-#!/usr/bin/env bash
-# Download the COFETT recordings (OpenNeuro ds006317, CC0) used in the paper.
-#   session 1, both participants, tasks para1 + para2 (16 runs)      -> unseen-sentence and session-1 repeated splits
-#   sessions 2-4, both participants, task para2 only (24 runs)        -> 16-repetition scheme (COFETT's own design)
-# Resumable (curl -C -). Usage: bash cofett/download_cofett.sh <RAW_DIR>
+
 set -u
 RAW=${1:?usage: download_cofett.sh <RAW_DIR>}
 B=https://s3.amazonaws.com/openneuro.org/ds006317
