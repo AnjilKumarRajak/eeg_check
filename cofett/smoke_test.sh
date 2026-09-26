@@ -1,10 +1,4 @@
-#!/usr/bin/env bash
-# Quick end-to-end check of the COFETT path without downloading recordings: writes synthetic
-# per-character feature files in the exact format of extract_features.py (real sentence lists,
-# random 840-d features), then runs the adapter and the unchanged framework (E2, E3) on a small
-# subset with the float32 Qwen2.5-0.5B prior. Checks that the code runs; the numbers are meaningless.
-#
-#   bash cofett/smoke_test.sh [WORK_DIR]        (env: PYTHON, DEVICE=cuda|cpu, PRIOR_FP32)
+
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"; cd "$REPO"
 W=${1:-$REPO/cofett_smoke}; PY=${PYTHON:-python}; DEV=${DEVICE:-cuda}
@@ -35,8 +29,6 @@ PRIOR_FP32=${PRIOR_FP32:-$W/prior_fp32}
 $PY "$HERE/e0_build_cofett.py" --prior-model "$PRIOR_FP32" --feat-dir "$W/feat" --out "$W/data" --runs-dir "$W/runs" --phase reading
 A="--prior causal_lm --prior-model $PRIOR_FP32 --evidence eeg --device $DEV --objective nce --free-tilt-rank 16 --estimand nce
    --gamma-warmup-value 1.0 --gamma-warmup-epochs 20 --runs-dir $W/runs --data-dir $W/data --epochs 1 --lr 1e-3"
-# a stage exits 1 when its pre-registered gate does not pass (expected on random features);
-# the smoke test only requires that every stage runs and writes its gate file
 $PY experiments/e2_channel.py $A --n-perm 20 --n-boot 50 || true
 $PY experiments/e3_selection.py $A --n-grid 2,4 || true
 for g in build channel selection; do
