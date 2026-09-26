@@ -13,3 +13,5 @@ matplotlib>=3.8
 # COFETT adapter only (cofett/extract_features.py, cofett/e0_build_cofett.py)
 mne>=1.6
 openpyxl>=3.1
+# OneStop adapter only (onestop/e0_build_onestop.py)
+pandas>=2.0

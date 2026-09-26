@@ -113,6 +113,7 @@ Stages, in dependency order, with what in the paper each one produces:
 | E8 | `experiments/e8_scaling.py` | training-data scaling curve | the 25%/50%/100%-of-training-data selection-accuracy numbers |
 | E10 | `experiments/e10_breakdown.py` | per-subgroup (task/subject) breakdown of the channel measurement | the "positive estimates across all readers and all tasks" claim |
 | E12 | `experiments/e12_sensitivity.py` | evaluation-gain sensitivity of the channel measurement (used for COFETT) | the COFETT evaluation-gain rows (Appendix) |
+| E13 | `experiments/e13_word_level.py` | word-level view of the E2 bound (per word, one-token vs multi-token words) from the stored evaluation draws | the word-level tables (Appendix) |
 | E14 | `experiments/e14_lowbit.py` | low-capacity detection sweep of the calibration instrument, 11 capacities x 3 seeds | the low-bit calibration table (Appendix) |
 
 `experiments/report.py` renders a human-readable report from whatever gate
@@ -192,6 +193,17 @@ bash cofett/run_cofett.sh <RAW> <WORK>
 bash cofett/smoke_test.sh                 # quick check, no recordings needed
 ```
 
+## External check on OneStop
+
+`onestop/` contains the data adapter, run script and smoke test for the OneStop eye-tracking
+corpus (gaze only). The measurement runs the unchanged `cprd/` and `experiments/` code with the
+same gaze instrument as ZuCo. See `onestop/README.md`.
+
+```bash
+bash onestop/run_onestop.sh <IA_REPORT_CSV> <WORK>
+bash onestop/smoke_test.sh                # quick check, no data needed
+```
+
 ## Design invariants
 
 These hold throughout the codebase:
@@ -216,6 +228,7 @@ experiments/                 one script per pipeline stage (see table above), pl
                              report/figure/gate-override utilities
 tools/download_zuco.py       dataset downloader (ZuCo-specific)
 cofett/                      COFETT external check: adapter, run and smoke-test scripts
+onestop/                     OneStop external check: adapter, run and smoke-test scripts
 run_v2.sh                    calibration + channel measurement + selection + guarded
                              test, for every evidence channel
 run_v2_followup.sh           extra seed replicates, scaling curve, figure regeneration
