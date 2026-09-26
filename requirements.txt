@@ -10,3 +10,6 @@ jiwer>=3.0
 nltk>=3.8
 bert-score>=0.3.13
 matplotlib>=3.8
+# COFETT adapter only (cofett/extract_features.py, cofett/e0_build_cofett.py)
+mne>=1.6
+openpyxl>=3.1

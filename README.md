@@ -112,6 +112,7 @@ Stages, in dependency order, with what in the paper each one produces:
 | E7 | `experiments/e7_loso.py` | leave-one-subject-out generalization check | the 12-reader LOSO accuracy numbers |
 | E8 | `experiments/e8_scaling.py` | training-data scaling curve | the 25%/50%/100%-of-training-data selection-accuracy numbers |
 | E10 | `experiments/e10_breakdown.py` | per-subgroup (task/subject) breakdown of the channel measurement | the "positive estimates across all readers and all tasks" claim |
+| E12 | `experiments/e12_sensitivity.py` | evaluation-gain sensitivity of the channel measurement (used for COFETT) | the COFETT evaluation-gain rows (Appendix) |
 | E14 | `experiments/e14_lowbit.py` | low-capacity detection sweep of the calibration instrument, 11 capacities x 3 seeds | the low-bit calibration table (Appendix) |
 
 `experiments/report.py` renders a human-readable report from whatever gate
@@ -178,6 +179,19 @@ To run a single stage by hand instead of through the wrapper scripts, call
 its `experiments/e*.py` file directly — every stage is a standalone
 `argparse` CLI; pass `--help` to see its flags.
 
+## External check on COFETT
+
+`cofett/` contains everything specific to the COFETT external check (Section 4.5 and its appendix):
+the data adapter (EDF -> per-character 840-d features -> HDF5), a float32 copy of the Qwen2.5-0.5B
+prior, the run script, and a smoke test.
+The measurement itself runs the unchanged `cprd/` and `experiments/` code. See `cofett/README.md`.
+
+```bash
+bash cofett/download_cofett.sh <RAW>
+bash cofett/run_cofett.sh <RAW> <WORK>
+bash cofett/smoke_test.sh                 # quick check, no recordings needed
+```
+
 ## Design invariants
 
 These hold throughout the codebase:
@@ -201,6 +215,7 @@ cprd/                        estimator, encoder, training objective, nulls, sele
 experiments/                 one script per pipeline stage (see table above), plus
                              report/figure/gate-override utilities
 tools/download_zuco.py       dataset downloader (ZuCo-specific)
+cofett/                      COFETT external check: adapter, run and smoke-test scripts
 run_v2.sh                    calibration + channel measurement + selection + guarded
                              test, for every evidence channel
 run_v2_followup.sh           extra seed replicates, scaling curve, figure regeneration
