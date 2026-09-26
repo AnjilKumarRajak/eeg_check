@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""Save a float32 copy of the COFETT prior (Qwen2.5-0.5B).
 
-The hub checkpoint is stored in bfloat16; the frozen-prior code computes the exact partition
-function in float32/float64 and expects float32 weights, so the paper's COFETT runs used a
-float32 copy of Qwen/Qwen2.5-0.5B. Weights and tokenizer are otherwise unchanged.
-
-    python cofett/make_fp32_prior.py <OUT_DIR> [--model Qwen/Qwen2.5-0.5B]
-"""
 import argparse
 
 import torch
