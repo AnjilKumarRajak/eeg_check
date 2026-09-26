@@ -1,16 +1,4 @@
-#!/usr/bin/env bash
-# OneStop external check (gaze only), with the unchanged ZuCo gaze instrument.
-#
-#   bash onestop/run_onestop.sh <IA_REPORT_CSV> <WORK_DIR>
-#
-#   IA_REPORT_CSV  OneStop interest-area report of the ordinary-reading regime
-#                  (OSF, https://osf.io/2prdq/, CC BY 4.0)
-#   WORK_DIR       output folder: built dataset (HDF5) and run folders with gate/ledger files
-#
-# Environment (optional): PYTHON (default python), DEVICE (default cuda),
-#   E1_GATE: estimator-calibration gate from the ZuCo E1 stage (run_v2.sh),
-#            default ./runs_v2/gate_estimator.json.
-# Every step is skipped if its gate file already exists.
+
 set -u
 CSV=${1:?usage: run_onestop.sh <IA_REPORT_CSV> <WORK_DIR>}; W=${2:?usage: run_onestop.sh <IA_REPORT_CSV> <WORK_DIR>}
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"; cd "$REPO"
