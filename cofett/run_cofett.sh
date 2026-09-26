@@ -15,6 +15,7 @@ for edf in $(find "$RAW" -name "*_eeg.edf" | sort); do
 done
 F1="$W/feat"; F16="$W/feat,$W/feat_ses234"   # session 1 only / all four sessions
 
+build () {
   local name=$1; shift; local R="$W/runs_$name"; mkdir -p "$R"
   [ -f "$R/gate_build.json" ] || $PY "$HERE/e0_build_cofett.py" --prior-model "$PM" --out "$W/data_built_$name" \
       --runs-dir "$R" "$@" > "$LOG/build_$name.log" 2>&1
