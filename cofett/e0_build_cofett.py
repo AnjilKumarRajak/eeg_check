@@ -1,18 +1,4 @@
-#!/usr/bin/env python3
-"""Adapter: COFETT per-character band-power (extract_features.py .npz) -> the HDF5
-schema cprd/data.py::read_split expects, so the unmodified e2_channel.py runs on it.
 
-EEG-only (no gaze exists): gaze_features written as zeros, evidence must be "eeg".
-Tokenisation: each character is tokenised on its own with the prior's tokenizer
-(Qwen2.5 by default; Chinese characters are almost always single tokens) and the
-character's 840-d vector is replicated over its sub-tokens, exactly as
-cprd/build.py replicates a word's vector. Punctuation characters (never
-highlighted) are NaN / unobserved, like unfixated words in ZuCo.
-
---phase reading : exact 0.4 s/character alignment (the controlled stage)
---phase recall  : nominal uniform alignment inside the silent-recall interval
-Text unit = the sentence string; split by text (no overlap) with cprd's make_splits.
-"""
 from __future__ import annotations
 import argparse, glob, json, os, sys
 import h5py
@@ -45,8 +31,6 @@ def main():
                          "about the text beyond the prior; COFETT has no gaze channel to borrow one from.")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    # repeat16: the COFETT benchmark scheme with all four sessions of the 252-sentence list (para2, 4 runs x 4 sessions = 16 repetitions
-    # per participant): test = repetitions 15-16, validation = 13-14, training = repetitions 1-12 plus every para1 reading.
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(args.prior_model)
     key = "feats_read" if args.phase == "reading" else "feats_recall"
@@ -81,8 +65,6 @@ def main():
             return args.spike_alpha * SD * (z @ _G)
     else:
         _spike = None
-    # per-character-set standardisation is NOT applied here (features are used as
-    # extracted, mirroring ZuCo 'as released'); log power already taken.
     if args.split_kind == "repeat16":
         def _rep16(run):
             if "task-para2" not in run: return "train"
