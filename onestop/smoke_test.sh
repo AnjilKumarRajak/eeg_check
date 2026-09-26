@@ -1,10 +1,4 @@
-#!/usr/bin/env bash
-# Quick end-to-end check of the OneStop path without the real data: writes a small synthetic
-# interest-area report with the real OneStop column names, then runs the adapter and the
-# unchanged framework (E2, E13 word-level, E3, structure-only control) with a small GPT-2 prior.
-# Checks that the code runs; the numbers are meaningless.
-#
-#   bash onestop/smoke_test.sh [WORK_DIR]        (env: PYTHON, DEVICE=cuda|cpu, PRIOR=distilgpt2)
+
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"; cd "$REPO"
 W=${1:-$REPO/onestop_smoke}; PY=${PYTHON:-python}; DEV=${DEVICE:-cuda}; PRIOR=${PRIOR:-distilgpt2}
