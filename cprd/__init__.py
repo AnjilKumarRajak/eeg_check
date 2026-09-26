@@ -1,11 +1,4 @@
-"""Prior-Residual Decoding -- independent Claude implementation.
 
-Preserves the proposal's immutable novelty: an EEG evidence encoder, an information-gain
-objective over a frozen language prior, and prior-residual decoding.
-
-See CLAUDE_ARCHITECTURE.md for the equations, the measured prior selection, and the list
-of claims this implementation deliberately does not support.
-"""
 from .data import (PRDDataset, Sentence, assert_no_text_leakage, collate,
                    read_split, recover_word_spans, retokenize_split, split_stats)
 from .encoder import EvidenceEncoder, RankBudgetedTilt
