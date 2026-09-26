@@ -1,24 +1,4 @@
-#!/usr/bin/env python3
-"""Adapter: OneStop (Interest Area report, ordinary-reading regime) -> the same
-HDF5 schema cprd/data.py::read_split expects, so the unmodified e2_channel.py /
-e3_selection.py / cprd estimator run on it unchanged. Gaze-only: no EEG channel
-in OneStop, so eeg_features is written as all-NaN / fully-unobserved (evidence
-must be "gaze"; "eeg"/"both" are not meaningful on this build and are refused).
 
-Feature mapping to cprd.build.GAZE_COLS = (fixated, log1p_nfix, log1p_ffd,
-log1p_gd, log1p_trt, log1p_gpt):
-    fixated    <- IA_FIXATION_COUNT > 0
-    log1p_nfix <- log1p(IA_FIXATION_COUNT)
-    log1p_ffd  <- log1p(IA_FIRST_FIXATION_DURATION)      first-fixation duration
-    log1p_gd   <- log1p(IA_FIRST_RUN_DWELL_TIME)          gaze duration (first pass)
-    log1p_trt  <- log1p(IA_DWELL_TIME)                    total reading time
-    log1p_gpt  <- log1p(max(IA_REGRESSION_PATH_DURATION, 0))   go-past time
-
-Text unit = (article_id, paragraph_id, difficulty_level); Adv and Ele counted as
-separate texts (same underlying article, different wording) to get enough unique
-texts for a train/val/test split with no text overlap. practice and repeated-
-reading trials are dropped.
-"""
 from __future__ import annotations
 import argparse, hashlib, json, os, sys
 import h5py
